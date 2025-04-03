@@ -1,2 +1,2 @@
-# thequantscience
-Come proprietario del profilo thequantscience di TradingView ho deciso di raccogliere tutti gli script più importanti all'interno di questa raccolta. Il profilo è inattivo ma puoi trovare tutto lo storico dei lavori più importanti rilasciati durante gli anni, molti dei quali Premium e mai pubblicati.
+# thequantscience | Pine Script | TradingView 
+Come proprietario del profilo thequantscience su TradingView ho deciso di raccogliere tutti gli script più importanti all'interno di questa raccolta. Il profilo TradingView è ora inattivo ma puoi trovare tutto lo storico dei lavori più importanti rilasciati durante gli anni, molti dei quali Premium e mai pubblicati. Spero che questi script possano aiutare qualcuno durante le proprie ricerche sui mercati finanziari. Tutti gli script sono scritti in linguaggio Pine Script V6 e Pine Script V5, accompagnati ciascuno da una breve descrizione.
