@@ -51,7 +51,7 @@ This software includes:
 2) Professional user interface
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-**6. 3COMMAS DCA STRATEGY BACKTESTING [NEVER PUBLISHED]**
+**6. DCA 3COMMAS STRATEGY BACKTESTING [NEVER PUBLISHED]**
 
 GENERAL OVERVIEW
 Backtesting software developed on the DCA strategy offered by 3Commas. This software exactly replicates the logic used by the 3Commas algorithm, giving you the opportunity to perform proper backtesting before investing.
