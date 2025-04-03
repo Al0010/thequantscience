@@ -3,15 +3,15 @@ As owner of **thequantscience** profile on TradingView I decided to provide best
 
 **Documentation List**
 
-Chart Box Indicator https://www.tradingview.com/script/IhMYkTot-Chart-Box-Session-Indicator-The-Quant-Science/
+**1. Chart Box Indicator https://www.tradingview.com/script/IhMYkTot-Chart-Box-Session-Indicator-The-Quant-Science/**
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Autoccorelation Price Forecasting: https://www.tradingview.com/script/AMe7s0ig-Autocorrelation-Price-Forecasting-The-Quant-Science/
+**2. Autoccorelation Price Forecasting: https://www.tradingview.com/script/AMe7s0ig-Autocorrelation-Price-Forecasting-The-Quant-Science/**
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Advanced Portfolio Equity: https://www.tradingview.com/script/KORkHGXh-Advanced-Portfolio-Equity-The-Quant-Science/
+**3. Advanced Portfolio Equity: https://www.tradingview.com/script/KORkHGXh-Advanced-Portfolio-Equity-The-Quant-Science/**
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-Dip & Rip Patterns: https://www.tradingview.com/script/H2RutLp1-Dip-Rip-Patterns-The-Quant-Science/
+**4. Dip & Rip Patterns: https://www.tradingview.com/script/H2RutLp1-Dip-Rip-Patterns-The-Quant-Science/**
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-**DCA KUCOIN STRATEGY BACKTESTING [NEVER PUBLISHED]**
+**5. DCA KUCOIN STRATEGY BACKTESTING [NEVER PUBLISHED]**
 
 GENERAL OVERVIEW
 Backtesting software developed on the DCA strategy offered by KuCoin Exchange. This software exactly replicates the logic used by the KuCoin algorithm, giving you the ability to backtest correctly before investing.
@@ -51,7 +51,7 @@ This software includes:
 2) Professional user interface
 
 ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-**3COMMAS DCA STRATEGY BACKTESTING [NEVER PUBLISHED]**
+**6. 3COMMAS DCA STRATEGY BACKTESTING [NEVER PUBLISHED]**
 
 GENERAL OVERVIEW
 Backtesting software developed on the DCA strategy offered by 3Commas. This software exactly replicates the logic used by the 3Commas algorithm, giving you the opportunity to perform proper backtesting before investing.
