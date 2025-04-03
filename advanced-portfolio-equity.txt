@@ -1,0 +1,379 @@
+// This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
+// © thequantscience
+
+//@version=6
+indicator("Advanced Portfolio Equity [The Quant Science]", 
+     overlay = false)
+
+fixedCapital = input.bool(defval = false, title = "Fixed capital ($)", group = "CAPITAL CONFIGURATION", inline = "fixedCapital", confirm = true)
+fixedcapitalIndex = input.string(defval = "10,000.00 $", title = "", group = "CAPITAL CONFIGURATION", inline = "fixedCapital", options = ["1,000.00 $", "10,000.00 $", "100,000.00 $", "1,000,000.00 $"], confirm = true)
+customCapital = input.bool(defval = false, title = "Custom capital ($)", group = "CAPITAL CONFIGURATION", inline = "customCapital", confirm = true)
+capitalIndex = input.float(defval = 10000, minval = 100, step = 100, title = "", group = "CAPITAL CONFIGURATION", tooltip = "Setting the benchmark capital.", inline = "customCapital", confirm = true)
+
+var ttFee = "Portfolio Fee\nRefers to the average transaction cost incurred during the creation of the investment portfolio."
+cost_fee = input.float(defval = 0.10, title = "Portfolio fee (%)", minval = 0.01, step = 0.01, group = "COST CONFIGURATION", tooltip = ttFee)
+
+var float starting_capital = 0
+
+if (fixedCapital==true)
+    if (fixedcapitalIndex=="1,000.00 $")
+        starting_capital := 1000
+    if (fixedcapitalIndex=="10,000.00 $")
+        starting_capital := 10000
+    if (fixedcapitalIndex=="100,000.00 $")
+        starting_capital := 100000
+    if (fixedcapitalIndex=="1,000,000.00 $")
+        starting_capital := 1000000
+
+if (customCapital==true)
+    starting_capital := capitalIndex
+
+var ttBenchmark = "Benchmark\nThe benchmark can be constituted by a specific market index, such as the S&P 500 for U.S. stocks, or by an index related to the sector or region of the portfolio's investments. The aim is to assess whether the portfolio manager can outperform the benchmark, indicating added value compared to a simple market exposure."
+symbolAsset = input.symbol(defval= "", title = "Benchmark index",  group = "BENCHMARK CONFIGURATION", tooltip = ttBenchmark) 
+
+symbolAsset_1 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 01 ", group = "ASSET ALLOCATION",  inline = "1") 
+weightAsset1 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION", inline = "1") 
+
+symbolAsset_2 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 02 ", group = "ASSET ALLOCATION", inline = "2") 
+weightAsset2 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION", inline = "2") 
+
+symbolAsset_3 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 03 ", group = "ASSET ALLOCATION",  inline = "3") 
+weightAsset3 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION", inline = "3") 
+
+symbolAsset_4 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 04 ", group = "ASSET ALLOCATION", inline = "4") 
+weightAsset4 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION",  inline = "4") 
+
+symbolAsset_5 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 05 ", group = "ASSET ALLOCATION",  inline = "5") 
+weightAsset5 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION", inline = "5") 
+
+symbolAsset_6 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 06 ", group = "ASSET ALLOCATION",  inline = "6") 
+weightAsset6 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION",  inline = "6") 
+
+symbolAsset_7 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 07 ", group = "ASSET ALLOCATION", inline = "7") 
+weightAsset7 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION", inline = "7") 
+
+symbolAsset_8 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 08 ", group = "ASSET ALLOCATION", inline = "8") 
+weightAsset8 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION",  inline = "8") 
+
+symbolAsset_9 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 09 ", group = "ASSET ALLOCATION", inline = "9") 
+weightAsset9 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION",  inline = "9") 
+
+symbolAsset_10 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 10 ", group = "ASSET ALLOCATION", inline = "10") 
+weightAsset10 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION", inline = "10")
+
+symbolAsset_11 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 11 ", group = "ASSET ALLOCATION", inline = "11") 
+weightAsset11 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION", inline = "11") 
+
+symbolAsset_12 = input.symbol(defval= "FX:EURUSD",
+     title = "Asset 12 ", group = "ASSET ALLOCATION", inline = "12") 
+weightAsset12 = input.float(defval = 0, title = "- %", minval = 0, maxval = 100, group = "ASSET ALLOCATION", inline = "12") 
+
+startDate  = input.int(title="D", defval=1,    minval=1,    maxval=31,   inline = 'Start', group = "DATE PERIOD ANALYSIS")
+startMonth = input.int(title="M", defval=1,    minval=1,    maxval=12,   inline = 'Start', group = "DATE PERIOD ANALYSIS")
+startYear  = input.int(title="Y", defval=2023, minval=1800, maxval=2100, inline = 'Start', group = "DATE PERIOD ANALYSIS")
+endDate    = input.int(title="D", defval=31,   minval=1,    maxval=31,   inline = 'End',   group = "DATE PERIOD ANALYSIS")
+endMonth   = input.int(title="M", defval=12,   minval=1,    maxval=12,   inline = 'End',   group = "DATE PERIOD ANALYSIS")
+endYear    = input.int(title="Y", defval=2025, minval=1800, maxval=2100, inline = 'End',   group = "DATE PERIOD ANALYSIS")
+
+inDateRange = (time >= timestamp(syminfo.timezone, startYear, startMonth, startDate, 0, 0)) and (time < timestamp(syminfo.timezone, endYear, endMonth, endDate, 0, 0))
+
+requestSecurity1  = request.security(symbolAsset_1,  timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity2  = request.security(symbolAsset_2,  timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity3  = request.security(symbolAsset_3,  timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity4  = request.security(symbolAsset_4,  timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity5  = request.security(symbolAsset_5,  timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity6  = request.security(symbolAsset_6,  timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity7  = request.security(symbolAsset_7,  timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity8  = request.security(symbolAsset_8,  timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity9  = request.security(symbolAsset_9,  timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity10 = request.security(symbolAsset_10, timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity11 = request.security(symbolAsset_11, timeframe.period, close, gaps = barmerge.gaps_off) 
+requestSecurity12 = request.security(symbolAsset_12, timeframe.period, close, gaps = barmerge.gaps_off) 
+
+percentagePrice1  = ta.roc(requestSecurity1,  1) 
+percentagePrice2  = ta.roc(requestSecurity2,  1)
+percentagePrice3  = ta.roc(requestSecurity3,  1)
+percentagePrice4  = ta.roc(requestSecurity4,  1)
+percentagePrice5  = ta.roc(requestSecurity5,  1)
+percentagePrice6  = ta.roc(requestSecurity6,  1)
+percentagePrice7  = ta.roc(requestSecurity7,  1)
+percentagePrice8  = ta.roc(requestSecurity8,  1)
+percentagePrice9  = ta.roc(requestSecurity9,  1)
+percentagePrice10 = ta.roc(requestSecurity10, 1)
+percentagePrice11 = ta.roc(requestSecurity11, 1)
+percentagePrice12 = ta.roc(requestSecurity12, 1)
+
+tot_weight = (
+     weightAsset1 + weightAsset2 + weightAsset3 
+     + weightAsset4 + weightAsset5 + weightAsset6 
+     + weightAsset7 + weightAsset8 + weightAsset9 
+     + weightAsset10 + weightAsset11 + weightAsset12
+     )
+
+tickerWeighted1   = (starting_capital * weightAsset1) / 100
+tickerWeighted2   = (starting_capital * weightAsset2) / 100 
+tickerWeighted3   = (starting_capital * weightAsset3) / 100 
+tickerWeighted4   = (starting_capital * weightAsset4) / 100 
+tickerWeighted5   = (starting_capital * weightAsset5) / 100 
+tickerWeighted6   = (starting_capital * weightAsset6) / 100 
+tickerWeighted7   = (starting_capital * weightAsset7) / 100 
+tickerWeighted8   = (starting_capital * weightAsset8) / 100 
+tickerWeighted9   = (starting_capital * weightAsset9) / 100 
+tickerWeighted10  = (starting_capital * weightAsset10)/ 100 
+tickerWeighted11  = (starting_capital * weightAsset11)/ 100 
+tickerWeighted12  = (starting_capital * weightAsset12)/ 100 
+
+// ASSET 1 // 
+var float asset1negative = 0 
+var float asset1positive = 0 
+if percentagePrice1 > 0 and inDateRange
+    asset1positive += percentagePrice1
+if percentagePrice1 < 0 and inDateRange
+    asset1negative += percentagePrice1
+yield_return1   = (asset1positive   + asset1negative)
+capital_earned1 = ((tickerWeighted1 * yield_return1) / 100)
+total_capital1  = (capital_earned1  + tickerWeighted1)
+net_fee_capital1 = total_capital1 - (total_capital1 * cost_fee / 100)
+
+// ASSET 2 // 
+var float asset2negative = 0 
+var float asset2positive = 0 
+if percentagePrice2 > 0 and inDateRange
+    asset2positive += percentagePrice2
+if percentagePrice2 < 0 and inDateRange
+    asset2negative += percentagePrice2
+yield_return2   = (asset2positive   + asset2negative)
+capital_earned2 = ((tickerWeighted2 * yield_return2) / 100)
+total_capital2  = (capital_earned2  + tickerWeighted2)
+net_fee_capital2 = total_capital2 - (total_capital2 * cost_fee / 100)
+
+// ASSET 3 // 
+var float asset3negative = 0 
+var float asset3positive = 0 
+if percentagePrice3 > 0 and inDateRange
+    asset3positive += percentagePrice3
+if percentagePrice3 < 0 and inDateRange
+    asset3negative += percentagePrice3
+yield_return3   = (asset3positive   + asset3negative)
+capital_earned3 = ((tickerWeighted3 * yield_return3) / 100)
+total_capital3  = (capital_earned3  + tickerWeighted3)
+net_fee_capital3 = total_capital3 - (total_capital3 * cost_fee / 100)
+
+// ASSET 4 // 
+var float asset4negative = 0 
+var float asset4positive = 0 
+if percentagePrice4 > 0 and inDateRange
+    asset4positive += percentagePrice4
+if percentagePrice4 < 0 and inDateRange
+    asset4negative += percentagePrice4
+yield_return4   = (asset4positive   + asset4negative)
+capital_earned4 = ((tickerWeighted4 * yield_return4) / 100)
+total_capital4  = (capital_earned4  + tickerWeighted4)
+net_fee_capital4 = total_capital4 - (total_capital4 * cost_fee / 100)
+
+// ASSET 5 // 
+var float asset5negative = 0 
+var float asset5positive = 0 
+if percentagePrice5 > 0 and inDateRange
+    asset5positive += percentagePrice5
+if percentagePrice5 < 0 and inDateRange
+    asset5negative += percentagePrice5
+yield_return5   = (asset5positive   + asset5negative)
+capital_earned5 = ((tickerWeighted5 * yield_return5) / 100)
+total_capital5  = (capital_earned5  + tickerWeighted5)
+net_fee_capital5 = total_capital5 - (total_capital5 * cost_fee / 100)
+
+// ASSET 6 // 
+var float asset6negative = 0 
+var float asset6positive = 0 
+if percentagePrice6 > 0 and inDateRange
+    asset6positive += percentagePrice6
+if percentagePrice6 < 0 and inDateRange
+    asset6negative += percentagePrice6
+yield_return6   = (asset6positive   + asset6negative)
+capital_earned6 = ((tickerWeighted6 * yield_return6) / 100)
+total_capital6  = (capital_earned6  + tickerWeighted6)
+net_fee_capital6 = total_capital6 - (total_capital6 * cost_fee / 100)
+
+// ASSET 7 // 
+var float asset7negative = 0 
+var float asset7positive = 0 
+if percentagePrice7 > 0 and inDateRange
+    asset7positive += percentagePrice7
+if percentagePrice7 < 0 and inDateRange
+    asset7negative += percentagePrice7
+yield_return7   = (asset7positive   + asset7negative)
+capital_earned7 = ((tickerWeighted7 * yield_return7) / 100)
+total_capital7 = (capital_earned7 + tickerWeighted7)
+net_fee_capital7 = total_capital7 - (total_capital7 * cost_fee / 100)
+
+// ASSET 8 // 
+var float asset8negative = 0 
+var float asset8positive = 0 
+if percentagePrice8 > 0 and inDateRange
+    asset8positive += percentagePrice8
+if percentagePrice8 < 0 and inDateRange
+    asset8negative += percentagePrice8
+yield_return8   = (asset8positive   + asset8negative)
+capital_earned8 = ((tickerWeighted8 * yield_return8) / 100)
+total_capital8 = (capital_earned8 + tickerWeighted8)
+net_fee_capital8 = total_capital8 - (total_capital8 * cost_fee / 100)
+
+// ASSET 9 // 
+var float asset9negative = 0 
+var float asset9positive = 0 
+if percentagePrice9 > 0 and inDateRange
+    asset9positive += percentagePrice9
+if percentagePrice9 < 0 and inDateRange
+    asset9negative += percentagePrice9
+yield_return9   = (asset9positive   + asset9negative)
+capital_earned9 = ((tickerWeighted9 * yield_return9) / 100)
+total_capital9 = (capital_earned9 + tickerWeighted9)
+net_fee_capital9 = total_capital9 - (total_capital9 * cost_fee / 100)
+
+// ASSET 10 // 
+var float asset10negative = 0 
+var float asset10positive = 0 
+if percentagePrice10 > 0 and inDateRange
+    asset10positive += percentagePrice10
+if percentagePrice10 < 0 and inDateRange
+    asset10negative += percentagePrice10
+yield_return10   = (asset10positive   + asset10negative)
+capital_earned10 = ((tickerWeighted10 * yield_return10) / 100)
+total_capital10 = (capital_earned10 + tickerWeighted10)
+net_fee_capital10 = total_capital10 - (total_capital10 * cost_fee / 100)
+
+// ASSET 11 // 
+var float asset11negative = 0 
+var float asset11positive = 0 
+if percentagePrice11 > 0 and inDateRange
+    asset11positive += percentagePrice11
+if percentagePrice11 < 0 and inDateRange
+    asset11negative += percentagePrice11
+yield_return11 = (asset11positive + asset11negative)
+capital_earned11 = ((tickerWeighted11 * yield_return11) / 100)
+total_capital11 = (capital_earned11 + tickerWeighted11)
+net_fee_capital11 = total_capital11 - (total_capital11 * cost_fee / 100)
+
+// ASSET 12 // 
+var float asset12negative = 0 
+var float asset12positive = 0 
+if percentagePrice12 > 0 and inDateRange
+    asset12positive += percentagePrice12
+if percentagePrice12 < 0 and inDateRange
+    asset12negative += percentagePrice12
+yield_return12 = (asset12positive + asset12negative)
+capital_earned12 = ((tickerWeighted12 * yield_return12) / 100)
+total_capital12 = (capital_earned12 + tickerWeighted12)
+net_fee_capital12 = total_capital12 - (total_capital12 * cost_fee / 100)
+
+tot_return = (total_capital1 + total_capital2 + total_capital3 + total_capital4 + total_capital5 + total_capital6
+     + total_capital7 + total_capital8 + total_capital9 + total_capital10 + total_capital11 + total_capital12)
+
+tot_net_return = (net_fee_capital1 + net_fee_capital2 + net_fee_capital3 + net_fee_capital4 + net_fee_capital5 + net_fee_capital6 
+     + net_fee_capital7 + net_fee_capital8 + net_fee_capital9 + net_fee_capital10 + net_fee_capital11 + net_fee_capital12)
+
+// ASSET CHART // 
+chartSecurity = request.security(symbolAsset, timeframe.period, close, gaps = barmerge.gaps_off)
+yieldchart = ta.roc(chartSecurity, 1)
+var float assetnegative = 0 
+var float assetpositive = 0 
+if yieldchart > 0 and inDateRange
+    assetpositive += yieldchart
+if yieldchart < 0 and inDateRange
+    assetnegative += yieldchart
+yield_return = (assetpositive + assetnegative)
+capital_earned_chart = ((starting_capital * yield_return) / 100)
+total_capital_chart  = (starting_capital + capital_earned_chart)
+
+diff = tot_net_return - starting_capital
+
+capital1returns  = starting_capital + (diff * weightAsset1 / 100) 
+capital2returns  = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) 
+capital3returns  = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) + (diff * weightAsset3 / 100) 
+capital4returns  = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) + (diff * weightAsset3 / 100) + (diff * weightAsset4 / 100) 
+capital5returns  = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) + (diff * weightAsset3 / 100) + (diff * weightAsset4 / 100) + (diff * weightAsset5 / 100) 
+capital6returns  = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) + (diff * weightAsset3 / 100) + (diff * weightAsset4 / 100) + (diff * weightAsset5 / 100) + (diff * weightAsset6 / 100) 
+capital7returns  = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) + (diff * weightAsset3 / 100) + (diff * weightAsset4 / 100) + (diff * weightAsset5 / 100) + (diff * weightAsset6 / 100) + (diff * weightAsset7 / 100) 
+capital8returns  = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) + (diff * weightAsset3 / 100) + (diff * weightAsset4 / 100) + (diff * weightAsset5 / 100) + (diff * weightAsset6 / 100) + (diff * weightAsset7 / 100) + (diff * weightAsset8 / 100) 
+capital9returns  = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) + (diff * weightAsset3 / 100) + (diff * weightAsset4 / 100) + (diff * weightAsset5 / 100) + (diff * weightAsset6 / 100) + (diff * weightAsset7 / 100) + (diff * weightAsset8 / 100) + (diff * weightAsset9 / 100) 
+capital10returns = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) + (diff * weightAsset3 / 100) + (diff * weightAsset4 / 100) + (diff * weightAsset5 / 100) + (diff * weightAsset6 / 100) + (diff * weightAsset7 / 100) + (diff * weightAsset8 / 100) + (diff * weightAsset9 / 100) + (diff * weightAsset10 / 100) 
+capital11returns = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) + (diff * weightAsset3 / 100) + (diff * weightAsset4 / 100) + (diff * weightAsset5 / 100) + (diff * weightAsset6 / 100) + (diff * weightAsset7 / 100) + (diff * weightAsset8 / 100) + (diff * weightAsset9 / 100) + (diff * weightAsset10 / 100) + (diff * weightAsset11 / 100)
+capital12returns = starting_capital + (diff * weightAsset1 / 100) + (diff * weightAsset2 / 100) + (diff * weightAsset3 / 100) + (diff * weightAsset4 / 100) + (diff * weightAsset5 / 100) + (diff * weightAsset6 / 100) + (diff * weightAsset7 / 100) + (diff * weightAsset8 / 100) + (diff * weightAsset9 / 100) + (diff * weightAsset10 / 100) + (diff * weightAsset11 / 100) + (diff * weightAsset12 / 100)
+
+cpr1  = inDateRange ? capital1returns  : na
+cpr2  = inDateRange ? capital2returns  : na
+cpr3  = inDateRange ? capital3returns  : na
+cpr4  = inDateRange ? capital4returns  : na
+cpr5  = inDateRange ? capital5returns  : na
+cpr6  = inDateRange ? capital6returns  : na
+cpr7  = inDateRange ? capital7returns  : na
+cpr8  = inDateRange ? capital8returns  : na
+cpr9  = inDateRange ? capital9returns  : na
+cpr10 = inDateRange ? capital10returns : na
+cpr11 = inDateRange ? capital11returns : na
+cpr12 = inDateRange ? capital12returns : na
+
+clr1  = capital1returns  > starting_capital ? color.rgb(27, 121, 30, 12) : capital1returns  < starting_capital ?  color.rgb(228, 15, 15, 12) : na
+clr2  = capital2returns  > starting_capital ? color.rgb(27, 121, 30, 18) : capital2returns  < starting_capital ?  color.rgb(228, 15, 15, 18) : na
+clr3  = capital3returns  > starting_capital ? color.rgb(27, 121, 30, 24) : capital3returns  < starting_capital ?  color.rgb(228, 15, 15, 24) : na
+clr4  = capital4returns  > starting_capital ? color.rgb(27, 121, 30, 30) : capital4returns  < starting_capital ?  color.rgb(228, 15, 15, 30) : na
+clr5  = capital5returns  > starting_capital ? color.rgb(27, 121, 30, 36) : capital5returns  < starting_capital ?  color.rgb(228, 15, 15, 36) : na
+clr6  = capital6returns  > starting_capital ? color.rgb(27, 121, 30, 42) : capital6returns  < starting_capital ?  color.rgb(228, 15, 15, 40) : na
+clr7  = capital7returns  > starting_capital ? color.rgb(27, 121, 30, 48) : capital7returns  < starting_capital ?  color.rgb(228, 15, 15, 46) : na
+clr8  = capital8returns  > starting_capital ? color.rgb(27, 121, 30, 54) : capital8returns  < starting_capital ?  color.rgb(228, 15, 15, 52) : na
+clr9  = capital9returns  > starting_capital ? color.rgb(27, 121, 30, 60) : capital9returns  < starting_capital ?  color.rgb(228, 15, 15, 58) : na
+clr10 = capital10returns > starting_capital ? color.rgb(27, 121, 30, 66) : capital10returns < starting_capital ?  color.rgb(228, 15, 15, 64) : na
+clr11 = capital11returns > starting_capital ? color.rgb(27, 121, 30, 72) : capital11returns < starting_capital ?  color.rgb(228, 15, 15, 70) : na
+clr12 = capital12returns > starting_capital ? color.rgb(27, 121, 30, 80) : capital12returns < starting_capital ?  color.rgb(228, 15, 15, 76) : na
+
+y = plot(inDateRange ? starting_capital : na, color = color.rgb(250, 251, 252, 73), title = "Starting Capital")
+y2 = plot(total_capital_chart, color = color.blue, linewidth = 1, title = "Benchmark Equity")
+main_equity = plot(tot_net_return, color = tot_net_return > starting_capital ? color.rgb(32, 238, 5, 20) : tot_net_return < starting_capital ? color.rgb(238, 5, 5, 20) : na, linewidth = 2, title = "Portfolio Equity")
+
+x1  = plot(inDateRange ? capital1returns  : na,  color = clr12, title = "Asset 01 Line")
+x2  = plot(inDateRange ? capital2returns  : na,  color = clr11, title = "Asset 02 Line")
+x3  = plot(inDateRange ? capital3returns  : na,  color = clr10, title = "Asset 03 Line")
+x4  = plot(inDateRange ? capital4returns  : na,  color = clr9,  title = "Asset 04 Line")
+x5  = plot(inDateRange ? capital5returns  : na,  color = clr8,  title = "Asset 05 Line")
+x6  = plot(inDateRange ? capital6returns  : na,  color = clr7,  title = "Asset 06 Line")
+x7  = plot(inDateRange ? capital7returns  : na,  color = clr6,  title = "Asset 07 Line")
+x8  = plot(inDateRange ? capital8returns  : na,  color = clr5,  title = "Asset 08 Line")
+x9  = plot(inDateRange ? capital9returns  : na,  color = clr4,  title = "Asset 09 Line")
+x10 = plot(inDateRange ? capital10returns : na,  color = clr3,  title = "Asset 10 Line")
+x11 = plot(inDateRange ? capital11returns : na,  color = clr2,  title = "Asset 11 Line")
+x12 = plot(inDateRange ? capital12returns : na,  color = clr1,  title = "Asset 12 Line")
+
+fill(y2 ,x12, color = color.rgb(0, 102, 255, 97), title = "Benchmark Background")
+
+fill(y,   x1,  clr12, title = "Asset 01 Background")
+fill(x1,  x2,  clr11, title = "Asset 02 Background")
+fill(x2,  x3,  clr10, title = "Asset 03 Background")
+fill(x3,  x4,  clr9,  title = "Asset 04 Background")
+fill(x4,  x5,  clr8,  title = "Asset 05 Background")
+fill(x5,  x6,  clr7,  title = "Asset 06 Background")
+fill(x6,  x7,  clr6,  title = "Asset 07 Background")
+fill(x7,  x8,  clr5,  title = "Asset 08 Background")
+fill(x8,  x9,  clr4,  title = "Asset 09 Background")
+fill(x9,  x10, clr3,  title = "Asset 10 Background")
+fill(x10, x11, clr2,  title = "Asset 11 Background")
+fill(x11, x12, clr1,  title = "Asset 12 Background")
+
+// ERROR RUNTIME 
+if tot_weight > 100 
+    runtime.error("Index overweighted, please check the weight asset feature and make sure the total asse weighted is 100")
+if tot_weight < 100 
+    runtime.error("Index underweighted, please check the weight asset feature and make sure the total asse weighted is 100")
+if (fixedCapital==true and customCapital==true)
+    runtime.error("Too many functions activated, please choose only one of the two functions between Fixed Capital or Custom Capital.")

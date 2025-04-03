@@ -1,0 +1,33 @@
+//@version=6
+indicator("Autocorrelation Price Forecasting [The Quant Science]", overlay=true, max_labels_count=500)
+
+tooltip1 = "Set the length of the data used in the autocorrelation price forecasting model."
+_length  = input.int(defval = 20, title = "Lenght:", step = 1, minval = 1, maxval = 200, tooltip = tooltip1, group = "SETTING")
+signal_threshold = 0.50
+
+color1 = input.color(defval = color.rgb(105, 247, 62), title = "Estimate up",   group = "ESTIMATE COLORS", inline = 'footer')
+color2 = input.color(defval = color.rgb(255, 0, 0),    title = "Estimate down", group = "ESTIMATE COLORS", inline = 'footer')
+
+prices = close
+autocorr_values = ta.correlation(prices, prices[_length], 200)
+cycle_detected = autocorr_values > signal_threshold
+returns = (prices - prices[1]) / prices[1] * 100
+linreg_values = ta.linreg(returns, _length, 0)
+
+var float store_cycle_value = 0
+
+if cycle_detected
+    store_cycle_value := linreg_values
+
+future_price_estimate = close * (1 + store_cycle_value / 100)
+
+hipotetical_gain = future_price_estimate - close
+
+color_estimate  = future_price_estimate > close ? color1 : future_price_estimate < close ? color2 : na
+
+color_estimate2 = hipotetical_gain > 0 ? color1 : na
+color_estimate3 = hipotetical_gain < 0 ? color2 : na
+
+label.new(bar_index, future_price_estimate, xloc = xloc.bar_index, yloc = yloc.abovebar, text = str.tostring(math.round_to_mintick(hipotetical_gain)), style = label.style_none, textcolor = color_estimate2, size = size.tiny)
+label.new(bar_index, future_price_estimate, xloc = xloc.bar_index, yloc = yloc.belowbar, text = str.tostring(math.round_to_mintick(hipotetical_gain)), style = label.style_none, textcolor = color_estimate3, size = size.tiny)
+plot(future_price_estimate, color = color_estimate, style = plot.style_stepline_diamond, linewidth = 2)

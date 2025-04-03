@@ -1,0 +1,23 @@
+//@version=5
+indicator('Dip & Rip Patterns - The Quant Science', 
+     overlay=true, 
+     max_bars_back=100, 
+     max_labels_count=500
+     )
+
+analysis_period = input.int(defval = 7, minval=1, maxval = 100, title = "Period", group = "Settings")
+roc = ta.roc(close, analysis_period)
+
+dip_move_value = input.float(defval = -5, title = "Dip (%)", step = 0.50, minval= -100, maxval=-0.01, group = "Settings")
+rip_move_value = input.float(defval = 5, title = "Rip (%)", step = 0.50, minval = 0.01, maxval = 100.00, group = "Settings")
+
+dip = roc <= dip_move_value 
+rip = roc >= rip_move_value 
+
+barcolor(dip ? color.rgb(255, 0, 0) : na,  title = "Dip Bar Color")
+bgcolor(dip ? color.rgb(255, 0, 0, 80) : na, title = "Dip Background Color")
+plotshape(dip, title="Dip", location=location.belowbar, color=color.rgb(255, 0, 0) , style=shape.circle, size=size.tiny)
+
+barcolor(rip ? color.rgb(0, 255, 8) : na, title = "Rip Bar Color")
+bgcolor(rip ? color.rgb(0, 255, 8, 84) : na, title = "Rip Background Color")
+plotshape(rip, title="Rip", location=location.belowbar, color=color.rgb(0, 255, 8), style=shape.circle, size=size.tiny)

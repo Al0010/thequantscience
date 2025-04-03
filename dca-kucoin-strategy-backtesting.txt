@@ -1,0 +1,112 @@
+//@version=5
+strategy(
+     "DCA KuCoin Strategy Backtesting - The Quant Science",
+     overlay = true,
+     default_qty_type = strategy.percent_of_equity, 
+     default_qty_value = 100,
+     pyramiding = 100,
+     currency = currency.EUR,
+     initial_capital = 10000,
+     commission_type = strategy.commission.percent,
+     commission_value = 0.07,
+     slippage = 5,
+     process_orders_on_close = true, 
+     close_entries_rule = "ANY",
+     max_labels_count = 500
+     )
+
+// INVEST EVERY
+invest_every_content = "This parameter sets the time interval for making DCA investments, with the shortest being once per hour and the longest being once every 2 weeks."
+invest_every = input.string(defval = "1 hour", title = "Invest every", options = ["1 hour","4 hours","8 hours","12 hours","1 day","2 days","3 days","4 days","1 week","2 weeks"], group = "SETTINGS", tooltip = invest_every_content, confirm = true)
+
+// AMOUNT PER INVESTMENT
+amount_per_invest_content = "There is no upper limit on the amount that can be invested each time, but there is a minimum amount requirement. Make sure that there are sufficient funds in your account to run a DCA bot."
+amount_per_investment = input.float(defval = 1000, title = "Amount per investment (USDT)", minval = 2, step = 1, group = "SETTINGS", tooltip = amount_per_invest_content, confirm = true)
+
+// MAX INVESTMENT
+max_investment_content = "A maximum DCA investment amount can be set. Once this amount is reached, no more investments will be made."
+max_investment = input.float(defval = 10000, title = "Max investment (USDT)", minval = 1, step = 1, group = "ADVANCED SETTINGS", tooltip = amount_per_invest_content, confirm = true)
+
+// PROFIT TARGET
+profit_target_content = "A profit target can be set for the DCA bot."
+profit_target = input.float(defval = 10.00, title = "Profit target (%)", minval = 0.10, step = 0.10, group = "ADVANCED SETTINGS", tooltip = profit_target_content, confirm = true)
+
+// DATE RANGE FEATURE
+startDate  = input.int(title="D: ", defval=1,    minval=1,    maxval=31,   inline = 'Start', group = "DATE PERIOD BACKTESTING", confirm = true)
+startMonth = input.int(title="M: ", defval=1,    minval=1,    maxval=12,   inline = 'Start', group = "DATE PERIOD BACKTESTING", confirm = true)
+startYear  = input.int(title="Y: ", defval=2023, minval=1800, maxval=2100, inline = 'Start', group = "DATE PERIOD BACKTESTING", confirm = true)
+endDate    = input.int(title="D: ", defval=31,   minval=1,    maxval=31,   inline = 'End',   group = "DATE PERIOD BACKTESTING", confirm = true)
+endMonth   = input.int(title="M: ", defval=12,   minval=1,    maxval=12,   inline = 'End',   group = "DATE PERIOD BACKTESTING", confirm = true)
+endYear    = input.int(title="Y: ", defval=2024, minval=1800, maxval=2100, inline = 'End',   group = "DATE PERIOD BACKTESTING", confirm = true)
+
+inDateRange = (time >= timestamp(syminfo.timezone, startYear, startMonth, startDate, 0, 0)) and (time < timestamp(syminfo.timezone, endYear, endMonth, endDate, 0, 0))
+
+// UNIX VALUE UI
+var float unix_value = 0
+
+if (invest_every=="1 hour")
+    unix_value := 3600000
+if (invest_every=="4 hours")
+    unix_value := 3600000 * 4
+if (invest_every=="8 hours")
+    unix_value := 3600000 * 8
+if (invest_every=="12 hours")
+    unix_value := 3600000 * 12
+if (invest_every=="1 day")
+    unix_value := 86400000
+if (invest_every=="2 days")
+    unix_value := 86400000 * 2
+if (invest_every=="3 days")
+    unix_value := 86400000 * 3
+if (invest_every=="4 days")
+    unix_value := 86400000 * 4
+if (invest_every=="1 week")
+    unix_value := 604800000
+if (invest_every=="2 weeks")
+    unix_value := 604800000 * 2
+
+// TRADING STRATEGY LOGIC
+var float qty_order = 0
+var float price_order = 0
+var float capital_account = 0
+var float time_account = 0
+var float account_value = 0
+var float price_exit = 0
+
+if (inDateRange and strategy.opentrades==0)
+    price_order := close 
+    time_account := time
+    qty_order := amount_per_investment/price_order
+    capital_account += amount_per_investment
+    account_value := strategy.equity
+    strategy.entry(id = "START-DCA", direction = strategy.long, qty = qty_order, limit = price_order, stop = price_order)
+
+if (capital_account <= (max_investment - amount_per_investment) and strategy.opentrades>0 and inDateRange) 
+    if (time == time_account + unix_value)
+        price_order := close 
+        time_account := time
+        capital_account += amount_per_investment
+        qty_order := amount_per_investment/price_order
+        strategy.entry(id = "DCA" + str.tostring(strategy.opentrades), direction = strategy.long, qty = qty_order, limit = price_order, stop = price_order)
+
+if (ta.crossover(strategy.equity, (account_value + (account_value * profit_target / 100))) and inDateRange)
+    strategy.close_all("Take-Profit")
+    price_exit := close 
+    capital_account := 0
+
+    // Delete bug: open trade - close trade at the same bar ...
+    if (price_order >= price_exit)
+        strategy.cancel("DCA" + str.tostring(strategy.opentrades))
+
+// ERROR RUNTIME
+check_error1 = (invest_every=="1 hour") or (invest_every=="4 hours") or (invest_every=="8 hours") or (invest_every=="12 hours")
+check_error2 = (invest_every=="1 day")  or (invest_every=="2 days")  or (invest_every=="3 days")  or (invest_every=="4 days")
+
+if (timeframe.isdaily and (check_error1))
+    runtime.error("You are using a higher timeframe than the selected investment time period. Reduce the timeframe to a time period equal to or less than that selected in the user interface. Please adjust your chart timeframe.")
+
+if (timeframe.isweekly and (check_error1 or check_error2))
+    runtime.error("You are using a higher timeframe than the selected investment time period. Reduce the timeframe to a time period equal to or less than that selected in the user interface. Please adjust your chart timeframe.")
+
+if (strategy.equity < 0)
+    runtime.error("Bankruptcy! The equity line of this backtesting is negative. Try the backtesting again using different parameters, or reduce or increase the test period.")

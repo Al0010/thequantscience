@@ -1,0 +1,117 @@
+//@version=6
+strategy(
+     "Spot Martingale KuCoin [The Quant Science]",
+     overlay = true,
+     default_qty_type = strategy.cash,
+     default_qty_value = 100,
+     pyramiding = 15,
+     currency = currency.USDT,
+     initial_capital = 10000,
+     commission_type = strategy.commission.percent,
+     commission_value = 0.07,
+     slippage = 5,
+     process_orders_on_close = true,
+     close_entries_rule = "ANY",
+     max_labels_count = 500,
+     max_lines_count = 500
+     )
+
+percentage_drop_for_position_increase = input.float(defval = 0.10, title = "Percentage Drop for Position Increase (0.1-15%)", step = 0.10, minval = 0.10, maxval = 15, group = "SETTINGS", confirm = true)
+max_position_increase = input.int(defval = 1, title = "Max Position Increases (1-15)", step = 1, minval = 1, maxval = 15, group = "SETTINGS", confirm = true)
+multiple_for_position_increase_content = "This multiple determines how much larger each purchase is compared to the previous purchase. For example, if the multiple is 2, then each purchase will be 2 times as large as the previous (i.e., subsequent purchases will be 2, 4, 8, 16, ... times the size of the initial purchase)."
+multiple_for_position_increase = input.float(defval = 1, title = "Multiple For Position Increase (1-2x)", step = 0.1, minval = 1, maxval = 2, group = "SETTINGS", tooltip = multiple_for_position_increase_content, confirm = true)
+buy = input.float(defval = 0.50, title = "Take Profit Percentage (0.5-1000%)", step = 0.10, minval = 0.50, maxval = 1000.00, group = "SETTINGS", confirm = true)
+
+defInitialOrderPrice() =>
+    var float initial_order_price = 0
+    initial_order_price := close 
+    initial_order_price
+
+startDate  = input.int(title="D: ", defval=1,    minval=1,    maxval=31,   inline = 'Start', group = "DATE PERIOD BACKTESTING", confirm = true)
+startMonth = input.int(title="M: ", defval=1,    minval=1,    maxval=12,   inline = 'Start', group = "DATE PERIOD BACKTESTING", confirm = true)
+startYear  = input.int(title="Y: ", defval=2023, minval=1800, maxval=2100, inline = 'Start', group = "DATE PERIOD BACKTESTING", confirm = true)
+endDate    = input.int(title="D: ", defval=31,   minval=1,    maxval=31,   inline = 'End',   group = "DATE PERIOD BACKTESTING", confirm = true)
+endMonth   = input.int(title="M: ", defval=12,   minval=1,    maxval=12,   inline = 'End',   group = "DATE PERIOD BACKTESTING", confirm = true)
+endYear    = input.int(title="Y: ", defval=2025, minval=1800, maxval=2100, inline = 'End',   group = "DATE PERIOD BACKTESTING", confirm = true)
+
+inDateRange = (time >= timestamp(syminfo.timezone, startYear, startMonth, startDate, 0, 0)) and (time < timestamp(syminfo.timezone, endYear, endMonth, endDate, 0, 0))
+
+initial_capital_order = strategy.default_entry_qty(1)
+
+var float equity_account = 0 
+var float first_price = 0
+
+defCreationOfOrders(order_number) =>
+    martingale_orders = (first_price - (first_price * ((percentage_drop_for_position_increase * (order_number) / 100))))
+    martingale_orders
+
+defCreationOfOrdersSize(orders_number) =>
+    martingale_order_sizes = (initial_capital_order * (multiple_for_position_increase * (orders_number + 1)))
+    martingale_order_sizes
+
+var float capital_size_amount = 0
+var bool in_trade = false
+
+if (in_trade == false)
+
+    if (inDateRange and strategy.opentrades==0) 
+
+        first_price := defInitialOrderPrice() 
+        equity_account := strategy.equity
+        strategy.entry(id= "Start Martingale", 
+                     direction = strategy.long, 
+                     qty = initial_capital_order/first_price,
+                     limit = first_price)
+        in_trade := true
+
+for i=0 to max_position_increase - 1 by 1
+
+    if (inDateRange and in_trade == true)
+
+        if (strategy.opentrades <= i)
+
+            strategy.entry(id = "Martingale" + str.tostring(i + 1),
+                     direction = strategy.long,
+                     qty = defCreationOfOrdersSize(i + 1) / defCreationOfOrders(i + 1),
+                     limit = defCreationOfOrders(i + 1))
+    
+if (ta.crossover(close, strategy.position_avg_price + (strategy.position_avg_price * buy / 100)) or close > strategy.position_avg_price + (strategy.position_avg_price * buy / 100))
+    strategy.close_all("Take Profit")
+    in_trade := false
+
+for i=0 to max_position_increase - 1 by 1
+    if in_trade==false and strategy.opentrades>0
+        strategy.cancel(id = "Martingale" + str.tostring(i))
+
+martingale_order2  = first_price  - (first_price  * (percentage_drop_for_position_increase * 1)  / 100)
+martingale_order3  = first_price  - (first_price  * (percentage_drop_for_position_increase * 2)  / 100)
+martingale_order4  = first_price  - (first_price  * (percentage_drop_for_position_increase * 3)  / 100)
+martingale_order5  = first_price  - (first_price  * (percentage_drop_for_position_increase * 4)  / 100)
+martingale_order6  = first_price  - (first_price  * (percentage_drop_for_position_increase * 5)  / 100)
+martingale_order7  = first_price  - (first_price  * (percentage_drop_for_position_increase * 6)  / 100)
+martingale_order8  = first_price  - (first_price  * (percentage_drop_for_position_increase * 7)  / 100)
+martingale_order9  = first_price  - (first_price  * (percentage_drop_for_position_increase * 8)  / 100)
+martingale_order10 = first_price  - (first_price  * (percentage_drop_for_position_increase * 9)  / 100)
+martingale_order11 = first_price  - (first_price  * (percentage_drop_for_position_increase * 10) / 100)
+martingale_order12 = first_price  - (first_price  * (percentage_drop_for_position_increase * 11) / 100)
+martingale_order13 = first_price  - (first_price  * (percentage_drop_for_position_increase * 12) / 100)
+martingale_order14 = first_price  - (first_price  * (percentage_drop_for_position_increase * 13) / 100)
+martingale_order15 = first_price  - (first_price  * (percentage_drop_for_position_increase * 14) / 100)
+martingale_order16 = first_price  - (first_price  * (percentage_drop_for_position_increase * 15) / 100)
+
+plot(series = max_position_increase >= 0  and inDateRange ? first_price : na, title = "First Buy", color = color.rgb(0, 255, 8), linewidth = 2)
+plot(series = max_position_increase >= 1  and inDateRange ? martingale_order2  : na,  title = "Martingale-1",  color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 2  and inDateRange ? martingale_order3  : na,  title = "Martingale-2",  color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 3  and inDateRange ? martingale_order4  : na,  title = "Martingale-3",  color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 4  and inDateRange ? martingale_order5  : na,  title = "Martingale-4",  color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 5  and inDateRange ? martingale_order6  : na,  title = "Martingale-5",  color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 6  and inDateRange ? martingale_order7  : na,  title = "Martingale-6",  color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 7  and inDateRange ? martingale_order8  : na,  title = "Martingale-7",  color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 8  and inDateRange ? martingale_order9  : na,  title = "Martingale-8",  color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 9  and inDateRange ? martingale_order10 : na,  title = "Martingale-9",  color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 10 and inDateRange ? martingale_order11 : na,  title = "Martingale-10", color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 11 and inDateRange ? martingale_order12 : na,  title = "Martingale-11", color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 12 and inDateRange ? martingale_order13 : na,  title = "Martingale-12", color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 13 and inDateRange ? martingale_order14 : na,  title = "Martingale-13", color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 14 and inDateRange ? martingale_order15 : na,  title = "Martingale-14", color = color.rgb(0, 255, 8), linewidth = 1)
+plot(series = max_position_increase >= 15 and inDateRange ? martingale_order16 : na,  title = "Martingale-15", color = color.rgb(0, 255, 8), linewidth = 1)
