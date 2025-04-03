@@ -1,0 +1,1144 @@
+//@version=5
+strategy(
+     "3Commas DCA Strategy Backtesting - The Quant Science",
+     overlay = false,
+     default_qty_type = strategy.percent_of_equity,
+     default_qty_value = 100,
+     pyramiding = 100,
+     currency = currency.USDT,
+     initial_capital = 10000,
+     commission_type = strategy.commission.percent,
+     commission_value = 0.07,
+     slippage = 5,
+     process_orders_on_close = true,
+     close_entries_rule = "ANY"
+     )
+
+// DCA MODEL
+selected_strategy_side = input.string(defval = "LONG", title = "Strategy Side", options = ["LONG", "SHORT"], group = "DCA Type", inline = "inline1", confirm = true)
+selected_dca_mode = input.string(defval = "20 DCA", title = "Type", options = ["20 DCA", "10 DCA", "5 DCA"], group = "DCA Type", inline = "inline1", confirm = true)
+
+// LEVERAGE FEATURE
+leverage = input.bool(defval = false, title = "", group = "DCA Type", inline = "s")
+leverage_level = input.float(defval = 2, title = "Leverage: ", group = "DCA Type", inline = "s", minval = 1, maxval = 100, tooltip = "Configure the 'Leverage' target the strategy will use to trades with leverage.")
+
+// DATE RANGE FEATURE 
+startDate  = input.int(title="D: ", defval=1,    minval=1,    maxval=31,   inline = 'Start', group = "DATE PERIOD BACKTESTING")
+startMonth = input.int(title="M: ", defval=1,    minval=1,    maxval=12,   inline = 'Start', group = "DATE PERIOD BACKTESTING")
+startYear  = input.int(title="Y: ", defval=2023, minval=1800, maxval=2100, inline = 'Start', group = "DATE PERIOD BACKTESTING")
+endDate    = input.int(title="D: ", defval=31,   minval=1,    maxval=31,   inline = 'End',   group = "DATE PERIOD BACKTESTING")
+endMonth   = input.int(title="M: ", defval=12,   minval=1,    maxval=12,   inline = 'End',   group = "DATE PERIOD BACKTESTING")
+endYear    = input.int(title="Y: ", defval=2024, minval=1800, maxval=2100, inline = 'End',   group = "DATE PERIOD BACKTESTING")
+
+inDateRange = (time >= timestamp(syminfo.timezone, startYear, startMonth, startDate, 0, 0)) and (time < timestamp(syminfo.timezone, endYear, endMonth, endDate, 0, 0))
+
+// BASE ORDER SIZE CONFIGURATION
+base_order_num = input.float(defval = 1, minval = 0, step = 0.10, title = "Base order size (%)", group = "STRATEGY", tooltip = "The 'Base Order' is the first order the strategy will create when starting a new deal.", inline = "base-order-size")
+
+// RSI 
+rsi_indicator = input.bool(defval = true, title = "######## RSI ########", group = "START DEAL CONDITION")
+lenght_period = input.int(title="Lenght", defval=7, minval=0, group = "START DEAL CONDITION", inline = "rsi")
+rsi_conditions = input.string(defval = "Less Than", title = "", group = "START DEAL CONDITION", options = ["Less Than", "Greater Than", "Crossing Down", "Crossing Up"], inline = "rsi")
+trigger_rsi = input.int(title="", defval=35, minval=0, group = "START DEAL CONDITION", inline = "rsi")
+rsi = ta.rsi(close, lenght_period)
+
+rsi_color_green = selected_strategy_side == "LONG" ? rsi <= trigger_rsi : selected_strategy_side == "SHORT" ? rsi >= trigger_rsi : na
+rsi_color_red = selected_strategy_side == "LONG" ? rsi >= trigger_rsi : selected_strategy_side == "SHORT" ? rsi <= trigger_rsi : na
+rsi_color = rsi_color_red ? #ff0000 : rsi_color_green ? #00ff00 : na
+rsi_activated1 = rsi_indicator==true ? rsi : na 
+rsi_activated2 = rsi_indicator==true ? 0 : na
+rsi_activated3 = rsi_indicator==true ? 100 : na
+rsi_activated4 = rsi_indicator==true ? trigger_rsi : na
+
+plot(rsi_activated1,  title = "RSI", color = rsi_color, linewidth = 1)
+hline(rsi_activated2, title = "RSI - Bottom line", color = color.rgb(0, 255, 8))
+hline(rsi_activated3, title = "RSI - Top line", color = color.rgb(255, 39, 39))
+hline(rsi_activated4, title = "RSI - Trigger value", color = color.rgb(72, 73, 73), linewidth = 2, linestyle = hline.style_dotted)
+
+rsi_ternary_condition = rsi_indicator==true and rsi_conditions=="Crossing Down" ? ta.crossunder(rsi, trigger_rsi) 
+     : rsi_indicator==true and rsi_conditions=="Crossing Up" ? ta.crossover(rsi, trigger_rsi)
+     : rsi_indicator==true and rsi_conditions=="Less Than" ? rsi < trigger_rsi
+     : rsi_indicator==true and rsi_conditions=="Greater Than" ? rsi > trigger_rsi
+     : na
+
+long_rsi_condition  = rsi_indicator==true and selected_strategy_side == "LONG"  ? rsi_ternary_condition : na
+short_rsi_condition = rsi_indicator==true and selected_strategy_side == "SHORT" ? rsi_ternary_condition : na
+
+// MACD 
+macd_indicator = input.bool(defval = false, title = "######## MACD ########", group = "START DEAL CONDITION")
+fast_length = input(title="Fast", defval=12, group = "START DEAL CONDITION", inline = "LENGHT")
+slow_length = input(title="Slow", defval=26, group = "START DEAL CONDITION", inline = "LENGHT")
+signal_length = input.int(title="",  minval = 1, maxval = 50, defval = 9, group = "START DEAL CONDITION", inline = "LENGHT")
+macd_conditions1 = input.string(defval = "Crossing Up", title = "MACD Trigger", group = "START DEAL CONDITION", options = ["Crossing Up", "Crossing Down"], inline = "LENGHT-2")
+line_trigger_macd1 =  input.string(defval = "Less Than 0", title = "Line Trigger", group = "START DEAL CONDITION", options = ["Less Than 0", "Greater Than 0"], inline = "LENGHT-2")
+
+col_macd = #2962FF
+col_signal = #FF6D00
+col_grow_above = #2bff00
+col_fall_above = #00ff3750
+col_grow_below = #ff0019
+col_fall_below = #ff000056
+
+fast_ma = ta.sma(close, fast_length)
+slow_ma = ta.sma(close, slow_length)
+
+macd = fast_ma - slow_ma
+signal = ta.sma(macd, signal_length)
+hist = macd - signal
+
+macd_ternary_condition = macd_indicator==true and macd_conditions1=="Crossing Up" and line_trigger_macd1=="Less Than 0" ? ta.crossover(macd, signal) and (macd < 0 and signal < 0)
+     : macd_indicator==true and macd_conditions1=="Crossing Up" and line_trigger_macd1=="Greater Than 0" ? ta.crossover(macd, signal) and (macd > 0 and signal > 0)
+     : macd_indicator==true and macd_conditions1=="Crossing Down" and line_trigger_macd1=="Greater Than 0" ? ta.crossunder(macd, signal) and (macd > 0 and signal > 0)
+     : macd_indicator==true and macd_conditions1=="Crossing Down" and line_trigger_macd1=="Less Than 0" ? ta.crossunder(macd, signal) and (macd < 0 and signal < 0)
+     : na
+
+macd_activate  = macd_indicator==true ? 0 : na 
+macd_activate2 = macd_indicator==true ? hist : na 
+macd_activate3 = macd_indicator==true ? macd : na 
+macd_activate4 = macd_indicator==true ? signal : na 
+
+hline(macd_activate, "MACD - Zero Line", color=color.new(#787B86, 50))
+plot(macd_activate2, title="MACD - Histogram", style=plot.style_columns, color=(hist>=0 ? (hist[1] < hist ? col_grow_above : col_fall_above) : (hist[1] < hist ? col_grow_below : col_fall_below)))
+plot(macd_activate3, title="MACD - MACD", color=col_macd)
+plot(macd_activate4, title="MACD - Signal", color=col_signal)
+
+long_macd_condition  = macd_indicator==true and selected_strategy_side == "LONG"  ? macd_ternary_condition : na
+short_macd_condition = macd_indicator==true and selected_strategy_side == "SHORT" ? macd_ternary_condition : na
+
+// Stochastic
+stochrsi_indicator = input.bool(defval = false, title = "######## Stoch ########", group = "START DEAL CONDITION")
+periodK = input.int(3, title = "K",  minval=1, group = "START DEAL CONDITION",  inline = "stoch")
+smoothK = input.int(3, title = "Ks", minval=1, group = "START DEAL CONDITION",  inline = "stoch")
+periodD = input.int(14,title =  "D", minval=1, group = "START DEAL CONDITION",  inline = "stoch")
+k = ta.sma(ta.stoch(close, high, low, periodK), smoothK)
+d = ta.sma(k, periodD)
+k_condition = input.string(defval = "Less Than", title = "K Condition", group = "START DEAL CONDITION", options = ["Less Than", "Greater Than", "Crossing Down", "Crossing Up"], inline = "stoch2")
+k_signal_value = input.int(title= "K Signal Value", defval=20, minval=0, group = "START DEAL CONDITION", inline = "stoch2")
+condition = input.string(defval = "K Crossing Up D", title = "Condition", group = "START DEAL CONDITION", options = ["K Crossing Up D", "K Crossing Down D"], inline = "stoch3")
+
+colorgreen_stch = selected_strategy_side=="LONG" ? k >= 50 and d >= 50 : selected_strategy_side=="SHORT" ? k <= 50 and d <= 50 : na
+colorred_stch = selected_strategy_side=="LONG" ? k <= 50 and d <= 50 : selected_strategy_side=="SHORT" ? k >= 50 and d >= 50 : na
+color_stch = colorred_stch ? #ff0000 : colorgreen_stch ? #00ff00 : #00ff00
+
+stoch_ternary_condition = stochrsi_indicator==true and k_condition=="Less Than" and condition=="K Crossing Up D" ? k < k_signal_value and ta.crossover(k, d)
+     : stochrsi_indicator==true and k_condition=="Less Than" and condition=="K Crossing Down D" ? k < k_signal_value and ta.crossunder(k, d)
+     : stochrsi_indicator==true and k_condition=="Greater Than" and condition=="K Crossing Up D" ? k > k_signal_value and ta.crossover(k, d)
+     : stochrsi_indicator==true and k_condition=="Greater Than" and condition=="K Crossing Down D" ? k > k_signal_value and ta.crossunder(k, d)
+     : stochrsi_indicator==true and k_condition=="Crossing Down" and condition=="K Crossing Up D" ? ta.crossunder(k, k_signal_value) and ta.crossover(k, d)
+     : stochrsi_indicator==true and k_condition=="Crossing Down" and condition=="K Crossing Down D" ? ta.crossunder(k, k_signal_value) and ta.crossunder(k, d)
+     : stochrsi_indicator==true and k_condition=="Crossing Up" and condition=="K Crossing Up D" ? ta.crossover(k, k_signal_value) and ta.crossover(k, d)
+     : stochrsi_indicator==true and k_condition=="Crossing Up" and condition=="K Crossing Down D" ? ta.crossover(k, k_signal_value) and ta.crossunder(k, d)
+     : na 
+     
+// INDICATOR FEATURE: Stochastic
+stochrsi_activated1 = stochrsi_indicator==true ? k : na
+stochrsi_activated2 = stochrsi_indicator==true ? d : na
+stochrsi_activated3 = stochrsi_indicator==true ? 0 : na
+stochrsi_activated4 = stochrsi_indicator==true ? 100 : na
+
+plot(stochrsi_activated1, title = "Stochastic - K", color = color_stch, linewidth = 2)
+plot(stochrsi_activated2, title = "Stochastic - D", color = color_stch, linewidth = 1)
+hline(stochrsi_activated3, title = "Stochastic - Bottom Line", color = color.rgb(255, 39, 39))
+hline(stochrsi_activated4, title = "Stochastic - Top line", color = color.rgb(0, 255, 8))
+
+long_stchrsi_condition  = stochrsi_indicator==true and selected_strategy_side == "LONG"  ? stoch_ternary_condition : na
+short_stchrsi_condition = stochrsi_indicator==true and selected_strategy_side == "SHORT" ? stoch_ternary_condition : na
+
+// TAKE PROFIT FEATURE 
+PROFIT = input.float(defval = 1, minval = 0, title = "Target profit (%): ", step = 0.10, group = "TAKE PROFIT", inline = "pov", tooltip = "Configure the percentage 'Take Profit' target the strategy will use to close successful trades, the strategy will automatically account for exchange fees.", confirm = true)
+PROFIT_ON_BASE_ORDER = input.bool(defval = true, title = "Percentage from base order", group = "TAKE PROFIT", tooltip = "If you configure the percentage from base order setting, this will close trades faster when 'Safety Orders' are executed but the value of the profit will remain the same and will be calculated from the initial 'Base Order' size, for example: Base Order $10, Take Profit 10% means that the profit will be $1 regardless of the amount of Safety Orders executed.", confirm = true)
+PROFIT_ON_TOTAL_VOLUME = input.bool(defval = false, title = "Percentage from total volume", group = "TAKE PROFIT", tooltip = "Alternatively, to calculate the 'Take Profit' target percentage using the Dollar Cost Average price of the asset being traded, use the percentage from total volume setting, this will increase the value of the amount of profit taken if the deal uses multiple safety orders.", confirm = true)
+
+// REINVEST PROFIT FEATURE ***
+REINVEST = input.bool(defval = false, title = "Reinvest profit (%)", group = "TAKE PROFIT", inline = "reinvestment")
+reinvest_profit_value = input.int(defval = 100, maxval = 100, minval = 1, title = "", group = "TAKE PROFIT", tooltip = "Maximize your returns and grow your investments with the reinvestment profit feature." , inline = "reinvestment") 
+
+var float equity_trades = 0
+if REINVEST==false
+    equity_trades := strategy.initial_capital
+if REINVEST==true 
+    equity_trades := (strategy.equity * reinvest_profit_value) / 100 
+
+// STOP LOSS FEATURE 
+STOPLOSS = input.bool(defval = false, title = "", group = "STOP LOSS", inline = "SL")
+STOPLOSSVALUE  = input.float(defval = 10, minval = 0, title = "Stop loss (%): ", step = 0.10, group = "STOP LOSS", inline = "SL", tooltip = "This is the percentage that price needs to move in the opposite direction to your take profit target, at which point the strategy will execute a 'Market Order' on the exchange account to close the deal for a smaller loss than keeping the deal open. Please note, the 'Stop Loss' is calculated from the price the initial 'Base Order' was filled at on the exchange account and not the Dollar Cost Average price.")
+
+// SAFETY ORDERS
+safety_orders_num = input.float(defval = 0.10, minval = 0, step = 0.10, title = "Safety orders size: ", group = "SAFETY ORDERS", inline = "Header", tooltip = "Enter the amount of funds your safety orders will use to average the cost of the asset being traded. This can help your strategy to close deals faster with more profit. Safety orders are also known as Dollar Cost Averaging and help when prices move in the opposite direction to your strategy's take profit target.", confirm = true)
+DROP = input.float(defval = 1,  minval = 0, title = "Price deviation (% from initial order): ", step = 0.10, group = "SAFETY ORDERS", inline = "Drop", tooltip = "Enter the percentage difference in price to create the first 'Safety Order'. All 'Safety Orders' are calculated from the price the initial 'Base Order' was filled on the exchange account.", confirm = true)
+VOLUME_SCALE = input.bool(defval = false, title = "", group = "SAFETY ORDERS", inline = "Volume Scale", confirm = true)
+SAFETY_ORDER_VOLUME_SCALE = input.float(defval = 1, minval = 0, maxval = 10, title = "Safety order volume scale: ", step = 0.10, group = "SAFETY ORDERS", inline = "Volume Scale", tooltip = "The 'Safety Order Volume Scale' is used to multiply the amount of funds used by the last 'Safety Order' that was created. Using a larger amount of funds for 'Safety Orders' allows your strategy to be more aggressive at Dollar Cost Averaging the price of the asset being traded.", confirm = true)
+STEP_SCALE = input.bool(defval = false, title = "", group = "SAFETY ORDERS", inline = "Step Scale", confirm = true)
+STEP_SCALE_VALUE = input.float(defval = 1, minval = 0, maxval = 10, title = "Safety order step scale: ", step = 0.10, group = "SAFETY ORDERS", inline = "Step Scale", tooltip = "The 'Safety Order Step Scale' is used to multiply the 'Price Deviation' percentage used by the last 'Safety Order' placed on the exchange account. Using a larger value here will reduce the amount of 'Safety Orders' your strategy will require to cover a larger move in price in the opposite direction to the active deal's take profit target.", confirm = true)
+
+// ###############################################################################################################################################################################
+
+// CALCOLARE LA QUANTITA'
+var float qty_base = 0 
+var float qty_dca  = 0 
+
+if (leverage==false)
+    qty_base := ((equity_trades * base_order_num) / 100 )  / close 
+    qty_dca  := ((equity_trades * safety_orders_num) / 100 ) / close 
+else if (leverage==true)
+    qty_base := (((equity_trades * base_order_num)    / 100 ) / close) * leverage_level
+    qty_dca  := (((equity_trades * safety_orders_num) / 100 ) / close) * leverage_level
+
+// ###############################################################################################################################################################################
+
+// CREATE ANTI REPAINT BLOCK CONDITIONS 
+isActiveLong = false
+isActiveLong := nz(isActiveLong[1], false)
+isSellLong   = false
+isSellLong   := nz(isSellLong[1], false)
+
+isActiveShort = false
+isActiveShort := nz(isActiveShort[1], false)
+isSellShort   = false
+isSellShort   := nz(isSellShort[1], false)
+
+// ###############################################################################################################################################################################
+
+// INITIALIZE VARIABLES 
+var float equity = 0
+var float base_order_price = 0
+
+var float dca1    = 0
+var float dca2    = 0
+var float dca3    = 0
+var float dca4    = 0
+var float dca5    = 0
+var float dca6    = 0
+var float dca7    = 0
+var float dca8    = 0
+var float dca9    = 0
+var float dca10   = 0
+var float dca11   = 0
+var float dca12   = 0
+var float dca13   = 0
+var float dca14   = 0
+var float dca15   = 0
+var float dca16   = 0
+var float dca17   = 0
+var float dca18   = 0
+var float dca19   = 0
+var float dca20   = 0
+
+var float exit_condition_long     = 0 
+var float exit_condition_stoploss = 0 
+var float exit_condition_Short    = 0 
+
+final_condition_long  = rsi_indicator == true ? long_rsi_condition  : macd_indicator == true ? long_macd_condition  : stochrsi_indicator==true ? long_stchrsi_condition  : na
+final_condition_short = rsi_indicator == true ? short_rsi_condition : macd_indicator == true ? short_macd_condition : stochrsi_indicator==true ? short_stchrsi_condition : na
+
+// ###############################################################################################################################################################################
+
+// 20 DCA 
+LONG = not isActiveLong and final_condition_long
+
+if (LONG and inDateRange and selected_dca_mode=="20 DCA" and selected_strategy_side=="LONG")
+
+    equity := strategy.equity
+    base_order_price := close 
+
+    if (STEP_SCALE == false)
+
+        dca1   := (base_order_price - (base_order_price * DROP / 100))
+
+        dca2   := (dca1 - (dca1 * DROP / 100)) 
+        dca3   := (dca2 - (dca2 * DROP / 100)) 
+        dca4   := (dca3 - (dca3 * DROP / 100)) 
+        dca5   := (dca4 - (dca4 * DROP / 100)) 
+        dca6   := (dca5 - (dca5 * DROP / 100)) 
+        dca7   := (dca6 - (dca6 * DROP / 100)) 
+        dca8   := (dca7 - (dca7 * DROP / 100)) 
+        dca9   := (dca8 - (dca8 * DROP / 100)) 
+        dca10  := (dca9 - (dca9 * DROP / 100))
+
+        dca11  := (dca10 - (dca10 * DROP / 100)) 
+        dca12  := (dca11 - (dca11 * DROP / 100)) 
+        dca13  := (dca12 - (dca12 * DROP / 100)) 
+        dca14  := (dca13 - (dca13 * DROP / 100)) 
+        dca15  := (dca14 - (dca14 * DROP / 100)) 
+        dca16  := (dca15 - (dca15 * DROP / 100)) 
+        dca17  := (dca16 - (dca16 * DROP / 100)) 
+        dca18  := (dca17 - (dca17 * DROP / 100)) 
+        dca19  := (dca18 - (dca18 * DROP / 100)) 
+        dca20  := (dca19 - (dca19 * DROP / 100)) 
+
+        isActiveLong := true
+        isSellLong   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_long := base_order_price + (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_long := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price - (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    else if (STEP_SCALE == true)
+
+        dca1  := (base_order_price - (base_order_price * (DROP * (STEP_SCALE_VALUE * 1))/ 100)) 
+
+        dca2  := (dca1 - (dca1 * (DROP * (STEP_SCALE_VALUE * 2))  / 100)) 
+        dca3  := (dca2 - (dca2 * (DROP * (STEP_SCALE_VALUE * 3))  / 100)) 
+        dca4  := (dca3 - (dca3 * (DROP * (STEP_SCALE_VALUE * 4))  / 100)) 
+        dca5  := (dca4 - (dca4 * (DROP * (STEP_SCALE_VALUE * 5))  / 100)) 
+        dca6  := (dca5 - (dca5 * (DROP * (STEP_SCALE_VALUE * 6))  / 100))
+        dca7  := (dca6 - (dca6 * (DROP * (STEP_SCALE_VALUE * 7))  / 100)) 
+        dca8  := (dca7 - (dca7 * (DROP * (STEP_SCALE_VALUE * 8))  / 100))
+        dca9  := (dca8 - (dca8 * (DROP * (STEP_SCALE_VALUE * 9))  / 100))
+        dca10 := (dca9 - (dca9 * (DROP * (STEP_SCALE_VALUE * 10)) / 100))
+
+        dca11  := (dca10 - (dca10 * (DROP * (STEP_SCALE_VALUE * 11)) / 100))
+        dca12  := (dca11 - (dca11 * (DROP * (STEP_SCALE_VALUE * 12)) / 100)) 
+        dca13  := (dca12 - (dca12 * (DROP * (STEP_SCALE_VALUE * 13)) / 100))
+        dca14  := (dca13 - (dca13 * (DROP * (STEP_SCALE_VALUE * 14)) / 100))
+        dca15  := (dca14 - (dca14 * (DROP * (STEP_SCALE_VALUE * 15)) / 100))
+        dca16  := (dca15 - (dca15 * (DROP * (STEP_SCALE_VALUE * 16)) / 100))
+        dca17  := (dca16 - (dca16 * (DROP * (STEP_SCALE_VALUE * 17)) / 100))
+        dca18  := (dca17 - (dca17 * (DROP * (STEP_SCALE_VALUE * 18)) / 100)) 
+        dca19  := (dca18 - (dca18 * (DROP * (STEP_SCALE_VALUE * 19)) / 100))
+        dca20  := (dca19 - (dca19 * (DROP * (STEP_SCALE_VALUE * 20)) / 100))
+
+        isActiveLong := true
+        isSellLong   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_long := base_order_price + (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_long := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price - (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    // WITH VOLUME SCALE 
+    if VOLUME_SCALE == true
+
+        strategy.entry(id = "Buy", direction = strategy.long, qty = qty_base, limit = base_order_price)
+
+        strategy.entry(id = "SO1",   direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 1),   limit = dca1)
+        strategy.entry(id = "SO2",   direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 2),   limit = dca2)
+        strategy.entry(id = "SO3",   direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 3),   limit = dca3)
+        strategy.entry(id = "SO4",   direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 4),   limit = dca4)
+        strategy.entry(id = "SO5",   direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 5),   limit = dca5)
+        strategy.entry(id = "SO6",   direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 6),   limit = dca6)
+        strategy.entry(id = "SO7",   direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 7),   limit = dca7)
+        strategy.entry(id = "SO8",   direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 8),   limit = dca8)
+        strategy.entry(id = "SO9",   direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 9),   limit = dca9)
+        strategy.entry(id = "SO10",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 10),  limit = dca10)
+        strategy.entry(id = "SO11",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 11),  limit = dca11)
+        strategy.entry(id = "SO12",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 12),  limit = dca12)
+        strategy.entry(id = "SO13",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 13),  limit = dca13)
+        strategy.entry(id = "SO14",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 14),  limit = dca14)
+        strategy.entry(id = "SO15",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 15),  limit = dca15)
+        strategy.entry(id = "SO16",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 16),  limit = dca16)
+        strategy.entry(id = "SO17",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 17),  limit = dca17)
+        strategy.entry(id = "SO18",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 18),  limit = dca18)
+        strategy.entry(id = "SO19",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 19),  limit = dca19)
+        strategy.entry(id = "SO20",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 20),  limit = dca20)
+
+        check_volume_scale = ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE * 1)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 2)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 3))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 4))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 5))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 6)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 7))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 8))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 9))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 10)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 11))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 12))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 13))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 14)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 15))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 16))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 17))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 18)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 19))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 20))
+
+        if check_volume_scale > equity_trades
+            runtime.error("SAFETY ORDER VOLUME SCALE ERROR: the total amount of orders size exceed the maximum limit. Please reduce the percentage size of your safety orders.")
+
+    // WITHOUT VOLUME SCALE 
+    else if VOLUME_SCALE == false
+
+        strategy.entry(id = "Buy", direction = strategy.long, qty = qty_base, limit = base_order_price)
+        
+        strategy.entry(id = "SO1",   direction = strategy.long, qty = qty_dca,  limit = dca1)
+        strategy.entry(id = "SO2",   direction = strategy.long, qty = qty_dca,  limit = dca2)
+        strategy.entry(id = "SO3",   direction = strategy.long, qty = qty_dca,  limit = dca3)
+        strategy.entry(id = "SO4",   direction = strategy.long, qty = qty_dca,  limit = dca4)
+        strategy.entry(id = "SO5",   direction = strategy.long, qty = qty_dca,  limit = dca5)
+        strategy.entry(id = "SO6",   direction = strategy.long, qty = qty_dca,  limit = dca6)
+        strategy.entry(id = "SO7",   direction = strategy.long, qty = qty_dca,  limit = dca7)
+        strategy.entry(id = "SO8",   direction = strategy.long, qty = qty_dca,  limit = dca8)
+        strategy.entry(id = "SO9",   direction = strategy.long, qty = qty_dca,  limit = dca9)
+        strategy.entry(id = "SO10",  direction = strategy.long, qty = qty_dca,  limit = dca10)
+        strategy.entry(id = "SO11",  direction = strategy.long, qty = qty_dca,  limit = dca11)
+        strategy.entry(id = "SO12",  direction = strategy.long, qty = qty_dca,  limit = dca12)
+        strategy.entry(id = "SO13",  direction = strategy.long, qty = qty_dca,  limit = dca13)
+        strategy.entry(id = "SO14",  direction = strategy.long, qty = qty_dca,  limit = dca14)
+        strategy.entry(id = "SO15",  direction = strategy.long, qty = qty_dca,  limit = dca15)
+        strategy.entry(id = "SO16",  direction = strategy.long, qty = qty_dca,  limit = dca16)
+        strategy.entry(id = "SO17",  direction = strategy.long, qty = qty_dca,  limit = dca17)
+        strategy.entry(id = "SO18",  direction = strategy.long, qty = qty_dca,  limit = dca18)
+        strategy.entry(id = "SO19",  direction = strategy.long, qty = qty_dca,  limit = dca19)
+        strategy.entry(id = "SO20",  direction = strategy.long, qty = qty_dca,  limit = dca20)
+
+// ###############################################################################################################################################################################
+
+// ENTRY CONDITION 
+
+if ((LONG) and (inDateRange)) and selected_dca_mode=="10 DCA" and selected_strategy_side=="LONG"
+
+    equity := strategy.equity
+    base_order_price := close 
+
+    if STEP_SCALE == false
+
+        dca1  := (base_order_price - (base_order_price * DROP / 100)) 
+        dca2  := (dca1 - (dca1 * DROP / 100)) 
+        dca3  := (dca2 - (dca2 * DROP / 100)) 
+        dca4  := (dca3 - (dca3 * DROP / 100)) 
+        dca5  := (dca4 - (dca4 * DROP / 100)) 
+        dca6  := (dca5 - (dca5 * DROP / 100)) 
+        dca7  := (dca6 - (dca6 * DROP / 100)) 
+        dca8  := (dca7 - (dca7 * DROP / 100)) 
+        dca9  := (dca8 - (dca8 * DROP / 100)) 
+        dca10 := (dca9 - (dca9 * DROP / 100)) 
+
+        isActiveLong := true
+        isSellLong   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_long := base_order_price + (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_long := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price - (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    else if STEP_SCALE == true
+
+        dca1  := (base_order_price - (base_order_price * (DROP * (STEP_SCALE_VALUE * 1))/ 100)) 
+        dca2  := (dca1 - (dca1 * (DROP * (STEP_SCALE_VALUE * 2))  / 100)) 
+        dca3  := (dca2 - (dca2 * (DROP * (STEP_SCALE_VALUE * 3))  / 100)) 
+        dca4  := (dca3 - (dca3 * (DROP * (STEP_SCALE_VALUE * 4))  / 100)) 
+        dca5  := (dca4 - (dca4 * (DROP * (STEP_SCALE_VALUE * 5))  / 100)) 
+        dca6  := (dca5 - (dca5 * (DROP * (STEP_SCALE_VALUE * 6))  / 100))
+        dca7  := (dca6 - (dca6 * (DROP * (STEP_SCALE_VALUE * 7))  / 100)) 
+        dca8  := (dca7 - (dca7 * (DROP * (STEP_SCALE_VALUE * 8))  / 100))
+        dca9  := (dca8 - (dca8 * (DROP * (STEP_SCALE_VALUE * 9))  / 100))
+        dca10 := (dca9 - (dca9 * (DROP * (STEP_SCALE_VALUE * 10)) / 100))
+
+        isActiveLong := true
+        isSellLong   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_long := base_order_price + (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_long := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price - (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    // WITH VOLUME SCALE 
+    if VOLUME_SCALE == true
+
+        strategy.entry(id = "Buy", direction = strategy.long, qty = qty_base, limit = base_order_price)
+
+        strategy.entry(id = "SO1",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 1),  limit = dca1)
+        strategy.entry(id = "SO2",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 2),  limit = dca2)
+        strategy.entry(id = "SO3",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 3),  limit = dca3)
+        strategy.entry(id = "SO4",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 4),  limit = dca4)
+        strategy.entry(id = "SO5",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 5),  limit = dca5)
+        strategy.entry(id = "SO6",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 6),  limit = dca6)
+        strategy.entry(id = "SO7",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 7),  limit = dca7)
+        strategy.entry(id = "SO8",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 8),  limit = dca8)
+        strategy.entry(id = "SO9",  direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 9),  limit = dca9)
+        strategy.entry(id = "SO10", direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 10), limit = dca10)
+
+        check_volume_scale = ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE * 1)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 2)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 3))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 4))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 5))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 6)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 7))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 8))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 9))
+
+        if check_volume_scale > equity_trades
+            runtime.error("SAFETY ORDER VOLUME SCALE ERROR: the total amount of orders size exceed the maximum limit. Please reduce the percentage size of your safety orders.")
+
+    // WITHOUT VOLUME SCALE 
+    else if VOLUME_SCALE == false
+
+        strategy.entry(id = "Buy", direction = strategy.long, qty = qty_base, limit = base_order_price)
+        
+        strategy.entry(id = "SO1",  direction = strategy.long, qty = qty_dca,  limit = dca1)
+        strategy.entry(id = "SO2",  direction = strategy.long, qty = qty_dca,  limit = dca2)
+        strategy.entry(id = "SO3",  direction = strategy.long, qty = qty_dca,  limit = dca3)
+        strategy.entry(id = "SO4",  direction = strategy.long, qty = qty_dca,  limit = dca4)
+        strategy.entry(id = "SO5",  direction = strategy.long, qty = qty_dca,  limit = dca5)
+        strategy.entry(id = "SO6",  direction = strategy.long, qty = qty_dca,  limit = dca6)
+        strategy.entry(id = "SO7",  direction = strategy.long, qty = qty_dca,  limit = dca7)
+        strategy.entry(id = "SO8",  direction = strategy.long, qty = qty_dca,  limit = dca8)
+        strategy.entry(id = "SO9",  direction = strategy.long, qty = qty_dca,  limit = dca9)
+        strategy.entry(id = "SO10", direction = strategy.long, qty = qty_dca,  limit = dca10)
+
+// ###############################################################################################################################################################################
+
+if ((LONG) and (inDateRange)) and selected_dca_mode=="5 DCA" and selected_strategy_side=="LONG"
+
+    equity := strategy.equity
+    base_order_price := close 
+
+    if STEP_SCALE == false
+
+        dca1 := (base_order_price - (base_order_price * DROP / 100)) 
+        dca2 := (dca1 - (dca1 * DROP / 100)) 
+        dca3 := (dca2 - (dca2 * DROP / 100)) 
+        dca4 := (dca3 - (dca3 * DROP / 100)) 
+        dca5 := (dca4 - (dca4 * DROP / 100)) 
+
+        isActiveLong := true
+        isSellLong   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_long := base_order_price + (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_long := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price - (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    else if STEP_SCALE == true
+
+        dca1 := (base_order_price - (base_order_price * (DROP * (STEP_SCALE_VALUE * 1))/ 100)) 
+        dca2 := (dca1 - (dca1 * (DROP * (STEP_SCALE_VALUE * 2)) / 100)) 
+        dca3 := (dca2 - (dca2 * (DROP * (STEP_SCALE_VALUE * 3)) / 100)) 
+        dca4 := (dca3 - (dca3 * (DROP * (STEP_SCALE_VALUE * 4)) / 100)) 
+        dca5 := (dca4 - (dca4 * (DROP * (STEP_SCALE_VALUE * 5)) / 100)) 
+
+        isActiveLong := true
+        isSellLong   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_long := base_order_price + (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_long := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price - (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    // WITH VOLUME SCALE 
+    if VOLUME_SCALE == true
+
+        strategy.entry(id = "Buy", direction = strategy.long, qty = qty_base, limit = base_order_price)
+
+        strategy.entry(id = "SO1", direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 1), limit = dca1)
+        strategy.entry(id = "SO2", direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 2), limit = dca2)
+        strategy.entry(id = "SO3", direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 3), limit = dca3)
+        strategy.entry(id = "SO4", direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 4), limit = dca4)
+        strategy.entry(id = "SO5", direction = strategy.long, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 5), limit = dca5)
+    
+        check_volume_scale = ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE * 1)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 2)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 3))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 4))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 5))
+
+        if check_volume_scale > equity_trades
+            runtime.error("SAFETY ORDER VOLUME SCALE ERROR: the total amount of orders size exceed the maximum limit. Please reduce the percentage size of your safety orders.")
+
+    // WITHOUT VOLUME SCALE 
+    else if VOLUME_SCALE == false
+
+        strategy.entry(id = "Buy", direction = strategy.long, qty = qty_base, limit = base_order_price)
+
+        strategy.entry(id = "SO1", direction = strategy.long, qty = qty_dca, limit = dca1)
+        strategy.entry(id = "SO2", direction = strategy.long, qty = qty_dca,  limit = dca2)
+        strategy.entry(id = "SO3", direction = strategy.long, qty = qty_dca,  limit = dca3)
+        strategy.entry(id = "SO4", direction = strategy.long, qty = qty_dca,  limit = dca4)
+        strategy.entry(id = "SO5", direction = strategy.long, qty = qty_dca,  limit = dca5)
+
+
+// ###############################################################################################################################################################################
+
+// EXIT CONDITION 
+CLOSE_LONG1 = not isSellLong and (ta.crossover(close, exit_condition_long) or ta.crossunder(close, exit_condition_stoploss))
+CLOSE_LONG2 = not isSellLong and (ta.crossover(strategy.equity, exit_condition_long) or ta.crossunder(close, exit_condition_stoploss))
+
+if PROFIT_ON_BASE_ORDER==true and selected_strategy_side=="LONG"
+
+    if (CLOSE_LONG1) and (inDateRange)
+
+        strategy.close_all("Sell")
+
+        isActiveLong := false
+        isSellLong   := true
+
+        strategy.cancel("SO1")
+        strategy.cancel("SO2")
+        strategy.cancel("SO3")
+        strategy.cancel("SO4")
+        strategy.cancel("SO5")
+        strategy.cancel("SO6")
+        strategy.cancel("SO7")
+        strategy.cancel("SO8")
+        strategy.cancel("SO9")
+        strategy.cancel("SO10")
+        strategy.cancel("SO11")
+        strategy.cancel("SO12")
+        strategy.cancel("SO13")
+        strategy.cancel("SO14")
+        strategy.cancel("SO15")
+        strategy.cancel("SO16")
+        strategy.cancel("SO17")
+        strategy.cancel("SO18")
+        strategy.cancel("SO19")
+        strategy.cancel("SO20")
+
+else if PROFIT_ON_BASE_ORDER==false and selected_strategy_side=="LONG"
+
+    if (CLOSE_LONG2) and (inDateRange)
+
+        strategy.close_all("Sell")
+
+        isActiveLong := false
+        isSellLong   := true
+
+        strategy.cancel("SO1")
+        strategy.cancel("SO2")
+        strategy.cancel("SO3")
+        strategy.cancel("SO4")
+        strategy.cancel("SO5")
+        strategy.cancel("SO6")
+        strategy.cancel("SO7")
+        strategy.cancel("SO8")
+        strategy.cancel("SO9")
+        strategy.cancel("SO10")
+        strategy.cancel("SO11")
+        strategy.cancel("SO12")
+        strategy.cancel("SO13")
+        strategy.cancel("SO14")
+        strategy.cancel("SO15")
+        strategy.cancel("SO16")
+        strategy.cancel("SO17")
+        strategy.cancel("SO18")
+        strategy.cancel("SO19")
+        strategy.cancel("SO20")
+
+// ###############################################################################################################################################################################
+
+Short = not isActiveShort and final_condition_short
+
+// 20 DCA
+if ((Short) and (inDateRange) and (selected_dca_mode=="20 DCA") and (selected_strategy_side=="SHORT"))
+
+    equity := strategy.equity
+    base_order_price := close 
+
+    if STEP_SCALE == false
+
+        dca1 := (base_order_price + (base_order_price * DROP / 100))
+
+        dca2  := (dca1 + (dca1 * DROP / 100)) 
+        dca3  := (dca2 + (dca2 * DROP / 100)) 
+        dca4  := (dca3 + (dca3 * DROP / 100)) 
+        dca5  := (dca4 + (dca4 * DROP / 100)) 
+        dca6  := (dca5 + (dca5 * DROP / 100)) 
+        dca7  := (dca6 + (dca6 * DROP / 100)) 
+        dca8  := (dca7 + (dca7 * DROP / 100)) 
+        dca9  := (dca8 + (dca8 * DROP / 100)) 
+        dca10 := (dca9 + (dca9 * DROP / 100))
+
+        dca11  := (dca10 + (dca10 * DROP / 100)) 
+        dca12  := (dca11 + (dca11 * DROP / 100)) 
+        dca13  := (dca12 + (dca12 * DROP / 100)) 
+        dca14  := (dca13 + (dca13 * DROP / 100)) 
+        dca15  := (dca14 + (dca14 * DROP / 100)) 
+        dca16  := (dca15 + (dca15 * DROP / 100)) 
+        dca17  := (dca16 + (dca16 * DROP / 100)) 
+        dca18  := (dca17 + (dca17 * DROP / 100)) 
+        dca19  := (dca18 + (dca18 * DROP / 100)) 
+        dca20  := (dca19 + (dca19 * DROP / 100)) 
+
+        isActiveShort := true
+        isSellShort   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_Short := base_order_price - (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_Short := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price + (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    else if STEP_SCALE == true
+
+        dca1 := (base_order_price + (base_order_price * (DROP * (STEP_SCALE_VALUE * 1))/ 100))
+
+        dca2  := (dca1 + (dca1 * (DROP * (STEP_SCALE_VALUE * 2))  / 100)) 
+        dca3  := (dca2 + (dca2 * (DROP * (STEP_SCALE_VALUE * 3))  / 100)) 
+        dca4  := (dca3 + (dca3 * (DROP * (STEP_SCALE_VALUE * 4))  / 100)) 
+        dca5  := (dca4 + (dca4 * (DROP * (STEP_SCALE_VALUE * 5))  / 100)) 
+        dca6  := (dca5 + (dca5 * (DROP * (STEP_SCALE_VALUE * 6))  / 100)) 
+        dca7  := (dca6 + (dca6 * (DROP * (STEP_SCALE_VALUE * 7))  / 100)) 
+        dca8  := (dca7 + (dca7 * (DROP * (STEP_SCALE_VALUE * 8))  / 100)) 
+        dca9  := (dca8 + (dca8 * (DROP * (STEP_SCALE_VALUE * 9))  / 100))
+        dca10 := (dca9 + (dca9 * (DROP * (STEP_SCALE_VALUE * 10)) / 100))
+
+        dca11  := (dca10 + (dca10 * (DROP * (STEP_SCALE_VALUE * 11)) / 100))
+        dca12  := (dca11 + (dca11 * (DROP * (STEP_SCALE_VALUE * 12)) / 100)) 
+        dca13  := (dca12 + (dca12 * (DROP * (STEP_SCALE_VALUE * 13)) / 100))
+        dca14  := (dca13 + (dca13 * (DROP * (STEP_SCALE_VALUE * 14)) / 100))
+        dca15  := (dca14 + (dca14 * (DROP * (STEP_SCALE_VALUE * 15)) / 100))
+        dca16  := (dca15 + (dca15 * (DROP * (STEP_SCALE_VALUE * 16)) / 100))
+        dca17  := (dca16 + (dca16 * (DROP * (STEP_SCALE_VALUE * 17)) / 100))
+        dca18  := (dca17 + (dca17 * (DROP * (STEP_SCALE_VALUE * 18)) / 100)) 
+        dca19  := (dca18 + (dca18 * (DROP * (STEP_SCALE_VALUE * 19)) / 100))
+        dca20  := (dca19 + (dca19 * (DROP * (STEP_SCALE_VALUE * 20)) / 100))
+
+        isActiveShort := true
+        isSellShort   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_Short := base_order_price - (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_Short := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price + (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    // WITH VOLUME SCALE 
+    if VOLUME_SCALE == true
+
+        strategy.entry(id = "Sell-Short", direction = strategy.short, qty = qty_base, limit = base_order_price, stop = base_order_price)
+
+        strategy.entry(id = "SSO1",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 1),  limit = dca1,  stop = dca1)
+        strategy.entry(id = "SSO2",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 2),  limit = dca2,  stop = dca2)
+        strategy.entry(id = "SSO3",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 3),  limit = dca3,  stop = dca3)
+        strategy.entry(id = "SSO4",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 4),  limit = dca4,  stop = dca4)
+        strategy.entry(id = "SSO5",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 5),  limit = dca5,  stop = dca5)
+        strategy.entry(id = "SSO6",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 6),  limit = dca6,  stop = dca6)
+        strategy.entry(id = "SSO7",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 7),  limit = dca7,  stop = dca7)
+        strategy.entry(id = "SSO8",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 8),  limit = dca8,  stop = dca8)
+        strategy.entry(id = "SSO9",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 9),  limit = dca9,  stop = dca9)
+        strategy.entry(id = "SSO10",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 10), limit = dca10, stop = dca10)
+        strategy.entry(id = "SSO11",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 11), limit = dca11, stop = dca11)
+        strategy.entry(id = "SSO12",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 12), limit = dca12, stop = dca12)
+        strategy.entry(id = "SSO13",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 13), limit = dca13, stop = dca13)
+        strategy.entry(id = "SSO14",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 14), limit = dca14, stop = dca14)
+        strategy.entry(id = "SSO15",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 15), limit = dca15, stop = dca15)
+        strategy.entry(id = "SSO16",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 16), limit = dca16, stop = dca16)
+        strategy.entry(id = "SSO17",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 17), limit = dca17, stop = dca17)
+        strategy.entry(id = "SSO18",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 18), limit = dca18, stop = dca18)
+        strategy.entry(id = "SSO19",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 19), limit = dca19, stop = dca19)
+        strategy.entry(id = "SSO20",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 20), limit = dca20, stop = dca20)
+        
+        check_volume_scale = ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE * 1)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 2)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 3))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 4))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 5))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 6)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 7))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 8))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 9))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 10))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 11))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 12))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 13))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 14)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 15))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 16))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 17))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 18)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 19))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 20))
+             
+        if check_volume_scale > equity_trades
+            runtime.error("SAFETY ORDER VOLUME SCALE ERROR: the total amount of orders size exceed the maximum limit. Please reduce the percentage size of your safety orders.")
+
+    // WITHOUT VOLUME SCALE 
+    else if VOLUME_SCALE == false
+
+        strategy.entry(id = "Sell-Short", direction = strategy.short, qty = qty_base, limit = base_order_price, stop = base_order_price)
+
+        strategy.entry(id = "SSO1",   direction = strategy.short, qty = qty_dca, limit = dca1,  stop = dca1)
+        strategy.entry(id = "SSO2",   direction = strategy.short, qty = qty_dca, limit = dca2,  stop = dca2)
+        strategy.entry(id = "SSO3",   direction = strategy.short, qty = qty_dca, limit = dca3,  stop = dca3)
+        strategy.entry(id = "SSO4",   direction = strategy.short, qty = qty_dca, limit = dca4,  stop = dca4)
+        strategy.entry(id = "SSO5",   direction = strategy.short, qty = qty_dca, limit = dca5,  stop = dca5)
+        strategy.entry(id = "SSO6",   direction = strategy.short, qty = qty_dca, limit = dca6,  stop = dca6)
+        strategy.entry(id = "SSO7",   direction = strategy.short, qty = qty_dca, limit = dca7,  stop = dca7)
+        strategy.entry(id = "SSO8",   direction = strategy.short, qty = qty_dca, limit = dca8,  stop = dca8)
+        strategy.entry(id = "SSO9",   direction = strategy.short, qty = qty_dca, limit = dca9,  stop = dca9)
+        strategy.entry(id = "SSO10",  direction = strategy.short, qty = qty_dca, limit = dca10, stop = dca10)
+        strategy.entry(id = "SSO11",  direction = strategy.short, qty = qty_dca, limit = dca11, stop = dca11)
+        strategy.entry(id = "SSO12",  direction = strategy.short, qty = qty_dca, limit = dca12, stop = dca12)
+        strategy.entry(id = "SSO13",  direction = strategy.short, qty = qty_dca, limit = dca13, stop = dca13)
+        strategy.entry(id = "SSO14",  direction = strategy.short, qty = qty_dca, limit = dca14, stop = dca14)
+        strategy.entry(id = "SSO15",  direction = strategy.short, qty = qty_dca, limit = dca15, stop = dca15)
+        strategy.entry(id = "SSO16",  direction = strategy.short, qty = qty_dca, limit = dca16, stop = dca16)
+        strategy.entry(id = "SSO17",  direction = strategy.short, qty = qty_dca, limit = dca17, stop = dca17)
+        strategy.entry(id = "SSO18",  direction = strategy.short, qty = qty_dca, limit = dca18, stop = dca18)
+        strategy.entry(id = "SSO19",  direction = strategy.short, qty = qty_dca, limit = dca19, stop = dca19)
+        strategy.entry(id = "SSO20",  direction = strategy.short, qty = qty_dca, limit = dca20, stop = dca20)
+
+if (Short and inDateRange and selected_strategy_side=="SHORT" and selected_dca_mode =="10 DCA")
+
+    equity := strategy.equity
+    base_order_price := close 
+
+    if STEP_SCALE == false
+
+        dca1 := (base_order_price + (base_order_price * DROP / 100))
+
+        dca2  := (dca1 + (dca1 * DROP / 100)) 
+        dca3  := (dca2 + (dca2 * DROP / 100)) 
+        dca4  := (dca3 + (dca3 * DROP / 100)) 
+        dca5  := (dca4 + (dca4 * DROP / 100)) 
+        dca6  := (dca5 + (dca5 * DROP / 100)) 
+        dca7  := (dca6 + (dca6 * DROP / 100)) 
+        dca8  := (dca7 + (dca7 * DROP / 100)) 
+        dca9  := (dca8 + (dca8 * DROP / 100)) 
+        dca10 := (dca9 + (dca9 * DROP / 100)) 
+
+        isActiveShort := true
+        isSellShort   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_Short := base_order_price - (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_Short := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price + (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    else if STEP_SCALE == true
+
+        dca1 := (base_order_price + (base_order_price * (DROP * (STEP_SCALE_VALUE * 1))/ 100))
+
+        dca2  := (dca1 + (dca1 * (DROP * (STEP_SCALE_VALUE * 2))  / 100)) 
+        dca3  := (dca2 + (dca2 * (DROP * (STEP_SCALE_VALUE * 3))  / 100)) 
+        dca4  := (dca3 + (dca3 * (DROP * (STEP_SCALE_VALUE * 4))  / 100)) 
+        dca5  := (dca4 + (dca4 * (DROP * (STEP_SCALE_VALUE * 5))  / 100)) 
+        dca6  := (dca5 + (dca5 * (DROP * (STEP_SCALE_VALUE * 6))  / 100)) 
+        dca7  := (dca6 + (dca6 * (DROP * (STEP_SCALE_VALUE * 7))  / 100)) 
+        dca8  := (dca7 + (dca7 * (DROP * (STEP_SCALE_VALUE * 8))  / 100)) 
+        dca9  := (dca8 + (dca8 * (DROP * (STEP_SCALE_VALUE * 9))  / 100))
+        dca10 := (dca9 + (dca9 * (DROP * (STEP_SCALE_VALUE * 10)) / 100))
+
+        isActiveShort := true
+        isSellShort   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_Short := base_order_price - (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_Short := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price + (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    // WITH VOLUME SCALE 
+    if VOLUME_SCALE == true
+
+        strategy.entry(id = "Sell-Short", direction = strategy.short, qty = qty_base, limit = base_order_price, stop = base_order_price)
+
+        strategy.entry(id = "SSO1",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 1),  limit = dca1,  stop = dca1)
+        strategy.entry(id = "SSO2",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 2),  limit = dca2,  stop = dca2)
+        strategy.entry(id = "SSO3",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 3),  limit = dca3,  stop = dca3)
+        strategy.entry(id = "SSO4",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 4),  limit = dca4,  stop = dca4)
+        strategy.entry(id = "SSO5",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 5),  limit = dca5,  stop = dca5)
+        strategy.entry(id = "SSO6",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 6),  limit = dca6,  stop = dca6)
+        strategy.entry(id = "SSO7",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 7),  limit = dca7,  stop = dca7)
+        strategy.entry(id = "SSO8",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 8),  limit = dca8,  stop = dca8)
+        strategy.entry(id = "SSO9",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 9),  limit = dca9,  stop = dca9)
+        strategy.entry(id = "SSO10",  direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 10), limit = dca10, stop = dca10)
+
+        check_volume_scale = ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE * 1)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 2)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 3))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 4))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 5))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 6)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 7))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 8))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 9))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 10))
+
+        if check_volume_scale > equity_trades
+            runtime.error("SAFETY ORDER VOLUME SCALE ERROR: the total amount of orders size exceed the maximum limit. Please reduce the percentage size of your safety orders.")
+
+    // WITHOUT VOLUME SCALE 
+    else if VOLUME_SCALE == false
+
+        strategy.entry(id = "Sell-Short", direction = strategy.short, qty = qty_base, limit = base_order_price, stop = base_order_price)
+
+        strategy.entry(id = "SSO1",   direction = strategy.short, qty = qty_dca, limit = dca1,  stop = dca1)
+        strategy.entry(id = "SSO2",   direction = strategy.short, qty = qty_dca, limit = dca2,  stop = dca2)
+        strategy.entry(id = "SSO3",   direction = strategy.short, qty = qty_dca, limit = dca3,  stop = dca3)
+        strategy.entry(id = "SSO4",   direction = strategy.short, qty = qty_dca, limit = dca4,  stop = dca4)
+        strategy.entry(id = "SSO5",   direction = strategy.short, qty = qty_dca, limit = dca5,  stop = dca5)
+        strategy.entry(id = "SSO6",   direction = strategy.short, qty = qty_dca, limit = dca6,  stop = dca6)
+        strategy.entry(id = "SSO7",   direction = strategy.short, qty = qty_dca, limit = dca7,  stop = dca7)
+        strategy.entry(id = "SSO8",   direction = strategy.short, qty = qty_dca, limit = dca8,  stop = dca8)
+        strategy.entry(id = "SSO9",   direction = strategy.short, qty = qty_dca, limit = dca9,  stop = dca9)
+        strategy.entry(id = "SSO10",  direction = strategy.short, qty = qty_dca, limit = dca10, stop = dca10)
+
+if ((Short) and (inDateRange)) and selected_dca_mode =="5 DCA"
+
+    equity := strategy.equity
+    base_order_price := close 
+
+    if STEP_SCALE == false
+
+        dca1 := (base_order_price + (base_order_price * DROP / 100)) 
+        dca2 := (dca1 + (dca1 * DROP / 100)) 
+        dca3 := (dca2 + (dca2 * DROP / 100)) 
+        dca4 := (dca3 + (dca3 * DROP / 100)) 
+        dca5 := (dca4 + (dca4 * DROP / 100)) 
+
+        isActiveShort := true
+        isSellShort   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_Short := base_order_price - (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_Short := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price + (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    else if STEP_SCALE == true
+
+        dca1 := (base_order_price + (base_order_price * (DROP * (STEP_SCALE_VALUE * 1))/ 100)) 
+        dca2 := (dca1 + (dca1 * (DROP * (STEP_SCALE_VALUE * 2)) / 100)) 
+        dca3 := (dca2 + (dca2 * (DROP * (STEP_SCALE_VALUE * 3)) / 100)) 
+        dca4 := (dca3 + (dca3 * (DROP * (STEP_SCALE_VALUE * 4)) / 100)) 
+        dca5 := (dca4 + (dca4 * (DROP * (STEP_SCALE_VALUE * 5)) / 100)) 
+
+        isActiveShort := true
+        isSellShort   := false
+
+        // PROFIT ON BASE ORDER 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==false
+            exit_condition_Short := base_order_price - (base_order_price * PROFIT / 100)
+
+        // PROFIT ON TOTAL VOLUME 
+        if PROFIT_ON_BASE_ORDER==false and PROFIT_ON_TOTAL_VOLUME==true
+            exit_condition_Short := equity + (equity * PROFIT / 100)
+
+        // BASED ON BASE ORDER PRICE 
+        if STOPLOSS==true
+            exit_condition_stoploss := base_order_price + (base_order_price * STOPLOSSVALUE / 100)
+
+        // ERROR RUNTIME 
+        if PROFIT_ON_BASE_ORDER==true and PROFIT_ON_TOTAL_VOLUME==true
+            runtime.error("TAKE PROFIT FEATURE ERROR: please activate only one feature 'Percentage from base order' or 'Percentage from total volume.'")
+
+    // WITH VOLUME SCALE 
+    if VOLUME_SCALE == true
+
+        strategy.entry(id = "Sell-Short", direction = strategy.short, qty = qty_base, limit = base_order_price, stop = base_order_price)
+
+        strategy.entry(id = "SSO1",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 1),  limit = dca1,  stop = dca1)
+        strategy.entry(id = "SSO2",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 2),  limit = dca2,  stop = dca2)
+        strategy.entry(id = "SSO3",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 3),  limit = dca3,  stop = dca3)
+        strategy.entry(id = "SSO4",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 4),  limit = dca4,  stop = dca4)
+        strategy.entry(id = "SSO5",   direction = strategy.short, qty = qty_dca  * (SAFETY_ORDER_VOLUME_SCALE * 5),  limit = dca5,  stop = dca5)
+    
+        check_volume_scale = ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE * 1)) 
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 2))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 3))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 4))
+             + ((equity_trades * safety_orders_num / 100) * (SAFETY_ORDER_VOLUME_SCALE  * 5))
+
+        if check_volume_scale > equity_trades
+            runtime.error("SAFETY ORDER VOLUME SCALE ERROR: the total amount of orders size exceed the maximum limit. Please reduce the percentage size of your safety orders.")
+
+    // WITHOUT VOLUME SCALE 
+    else if VOLUME_SCALE == false
+
+        strategy.entry(id = "Sell-Short", direction = strategy.short, qty = qty_base, limit = base_order_price, stop = base_order_price)
+
+        strategy.entry(id = "SSO1",   direction = strategy.short, qty = qty_dca, limit = dca1,  stop = dca1)
+        strategy.entry(id = "SSO2",   direction = strategy.short, qty = qty_dca, limit = dca2,  stop = dca2)
+        strategy.entry(id = "SSO3",   direction = strategy.short, qty = qty_dca, limit = dca3,  stop = dca3)
+        strategy.entry(id = "SSO4",   direction = strategy.short, qty = qty_dca, limit = dca4,  stop = dca4)
+        strategy.entry(id = "SSO5",   direction = strategy.short, qty = qty_dca, limit = dca5,  stop = dca5)
+
+// EXIT CONDITION 
+CLOSE_Short1 = not isSellShort and (ta.crossunder(close, exit_condition_Short) or ta.crossover(close, exit_condition_stoploss))
+CLOSE_Short2 = not isSellShort and (ta.crossover(strategy.equity, exit_condition_Short) or ta.crossover(close, exit_condition_stoploss))
+
+if PROFIT_ON_BASE_ORDER==true 
+
+    if (CLOSE_Short1) and (inDateRange) and selected_strategy_side=="SHORT"
+
+        strategy.close_all("Sell")
+
+        isActiveShort := false
+        isSellShort   := true
+
+        strategy.cancel("SSO1")
+        strategy.cancel("SSO2")
+        strategy.cancel("SSO3")
+        strategy.cancel("SSO4")
+        strategy.cancel("SSO5")
+        strategy.cancel("SSO6")
+        strategy.cancel("SSO7")
+        strategy.cancel("SSO8")
+        strategy.cancel("SSO9")
+        strategy.cancel("SSO10")
+        strategy.cancel("SSO11")
+        strategy.cancel("SSO12")
+        strategy.cancel("SSO13")
+        strategy.cancel("SSO14")
+        strategy.cancel("SSO15")
+        strategy.cancel("SSO16")
+        strategy.cancel("SSO17")
+        strategy.cancel("SSO18")
+        strategy.cancel("SSO19")
+        strategy.cancel("SSO20")
+
+else if PROFIT_ON_BASE_ORDER==false 
+
+    if (CLOSE_Short2) and (inDateRange) and selected_strategy_side=="SHORT"
+
+        strategy.close_all("Sell")
+
+        isActiveShort := false
+        isSellShort   := true
+
+        strategy.cancel("SSO1")
+        strategy.cancel("SSO2")
+        strategy.cancel("SSO3")
+        strategy.cancel("SSO4")
+        strategy.cancel("SSO5")
+        strategy.cancel("SSO6")
+        strategy.cancel("SSO7")
+        strategy.cancel("SSO8")
+        strategy.cancel("SSO9")
+        strategy.cancel("SSO10")
+        strategy.cancel("SSO11")
+        strategy.cancel("SSO12")
+        strategy.cancel("SSO13")
+        strategy.cancel("SSO14")
+        strategy.cancel("SSO15")
+        strategy.cancel("SSO16")
+        strategy.cancel("SSO17")
+        strategy.cancel("SSO18")
+        strategy.cancel("SSO19")
+        strategy.cancel("SSO20")
+
+// CHECKING SIZE ORDER 
+numbersforcheck = selected_dca_mode=="5 DCA" ? 5 : selected_dca_mode=="10 DCA" ? 10 : selected_dca_mode=="20 DCA" ? 20 : na
+checksize = base_order_num + (safety_orders_num * numbersforcheck)
+if checksize > 100
+    runtime.error("The total size of your orders exceed the maximum available, please reduce the size of your orders.")
+
+// ERROR RUNTIME INDICATORS
+if (rsi_indicator==true and macd_indicator==true) 
+     or (rsi_indicator==true and stochrsi_indicator==true) 
+     or (macd_indicator==true and stochrsi_indicator==true)
+    runtime.error("You can only display one indicator at a time, please check your settings and make sure you have only one indicator active.")
+
+// BANKRUPTCY CHECK
+if strategy.equity < 0
+    runtime.error("Bankruptcy! The equity line of this backtesting is negative. Try the backtesting again using different parameters, or reduce or increase the test period.")
